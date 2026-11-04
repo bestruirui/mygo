@@ -219,3 +219,20 @@ func TestUIAStates(t *testing.T) {
 		t.Errorf("the table chose %v", ids(chosen))
 	}
 }
+
+// A range with a text for its value (aria-valuetext) gives it through the
+// Value pattern beside RangeValue; one without has RangeValue alone.
+func TestUIARangeValueText(t *testing.T) {
+	for _, c := range []struct {
+		value string
+		want  bool
+	}{{"30 percent", true}, {"", false}} {
+		e := &uiaElement{n: platform.AccessNode{Role: platform.RoleSlider, Max: 100, Now: 30, Value: c.value}}
+		if !e.supports(ifaceRangeValue) {
+			t.Errorf("value %q: no RangeValue", c.value)
+		}
+		if got := e.supports(ifaceValue); got != c.want {
+			t.Errorf("value %q: Value pattern %v, want %v", c.value, got, c.want)
+		}
+	}
+}

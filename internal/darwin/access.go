@@ -283,6 +283,11 @@ func toggle(r platform.AccessRole) bool {
 	return false
 }
 
+// valueText reports whether a node of a range has a text for its value, as
+// aria-valuetext, which Core-AAM maps to AXValueDescription beside the
+// number.
+func valueText(n platform.AccessNode) bool { return n.Role.Ranged() && n.Value != "" }
+
 // valueOf returns the value of a node as AppKit wants it: a number for
 // toggles, disclosures and ranges, a string for texts.
 func valueOf(n platform.AccessNode) id {
@@ -852,6 +857,9 @@ func registerAccessClass() {
 					names = send(names, "arrayByAddingObject:", uintptr(nsString(name)))
 				}
 			}
+			if valueText(el.node) {
+				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXValueDescription")))
+			}
 			return names
 		}),
 		method("accessibilityAttributeValue:", func(self id, cmd objc.SEL, attr id) id {
@@ -940,6 +948,10 @@ func registerAccessClass() {
 							return nsBool(atomic)
 						}
 						return nsString("additions text") // ARIA's default
+					}
+				case "AXValueDescription":
+					if valueText(el.node) {
+						return nsString(el.node.Value)
 					}
 				}
 			}
