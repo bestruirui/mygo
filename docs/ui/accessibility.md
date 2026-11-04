@@ -150,7 +150,8 @@ Automation's ExpandCollapse pattern (with `Expanded`) and
 `AXSortDirection` (unknown for another order), ATK's `sort` attribute,
 and UI Automation's `ItemStatus` and `AriaProperties` (`sort=other`), as
 [`Table`](table.md)'s headers say from `ListState.Sort`. A chosen cell is
-AppKit's `AXSelected` with its table's `AXSelectedCells`, ATK's
+AppKit's `AXSelected` with its table's `AXSelectedCells`, and its row
+in the table's `AXSelectedRows`, as NSTableView tells its choice, ATK's
 selectable and selected states, and UI Automation's SelectionItem, in the
 table's Selection.
 
@@ -160,6 +161,9 @@ assistive technology gets them, with `Tester.AccessByRole`:
 ```go
 if a, _ := tt.AccessByRole(ui.RoleGroup, "Messages"); !a.Busy {
 	t.Error("Messages is not busy while loading")
+}
+if day, _ := tt.AccessByRole(ui.RoleCell, "November 2"); !day.Selected {
+	t.Error("the day picked is not selected")
 }
 ```
 
