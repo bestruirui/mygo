@@ -2536,6 +2536,8 @@ either.
   map as WAI-ARIA's Core Accessibility API Mappings do: `RoleRegion` is
   one only with a name (a group without), `AXLandmarkRegion`, ATK's
   landmark with `xml-roles:region`, and UIA's custom LandmarkType;
+  `RoleSearch` is `AXGroup` with `AXLandmarkSearch`, ATK's landmark
+  with `xml-roles:search`, and UIA's Group with the search LandmarkType;
   `RoleLog`, `RoleTimer` and `RoleAlert` are `AXGroup` with
   `AXApplicationLog`, `AXApplicationTimer` and `AXApplicationAlert`,
   ATK's log, timer and notification, and UIA's Group named "log",

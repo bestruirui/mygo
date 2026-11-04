@@ -42,6 +42,9 @@ func TestTesterAccess(t *testing.T) {
 				ui.Link(c, "Home", "/")
 				ui.Link(c, "Docs", "/docs").Current(ui.CurrentPage)
 			})
+			ui.Row(c).Role(ui.RoleSearch).Label("Site search").Children(func() {
+				ui.Button(c, "Go")
+			})
 			ui.Collapsible(c, "More", &open, func() { ui.Text(c, "Hidden") })
 			ui.Button(c, "Save").Disabled(true)
 			ui.Box(c).Size(24, 24).Label("Error").Description("Disk full")
@@ -102,6 +105,9 @@ func TestTesterAccess(t *testing.T) {
 		t.Errorf("Settings: %+v", h)
 	}
 	accessOf(t, tt, ui.RoleNavigation, "Main")
+	if a, ok := tt.Access("Site search"); !ok || a.Role != ui.RoleSearch {
+		t.Errorf("Site search: %+v, %v", a, ok)
+	}
 	if docs := accessOf(t, tt, ui.RoleLink, "Docs"); docs.Current != ui.CurrentPage {
 		t.Errorf("Docs: %+v", docs)
 	}

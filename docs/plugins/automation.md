@@ -154,7 +154,7 @@ a column that lays others out has no node, keyed or not. Roles are
 `comboBox`, `disclosure`, `meter`, `stepper`, `colorWell`,
 `alertDialog`, `menu`, `menuBar`, `menuItem`, `menuItemCheckBox`,
 `menuItemRadio`, `heading`, `region`, `log`, `timer`, `alert`,
-`separator`, `rowHeader` and `navigation`. States are `focusable`, `disabled`,
+`separator`, `rowHeader`, `search` and `navigation`. States are `focusable`, `disabled`,
 `checked`, `mixed`, `selected`, `expanded`, `multiline`, `password`,
 `readOnly`, `selectable`, `offscreen`, `multiselectable`, `segment`,
 `search`, `invalid`, `sortAscending`, `sortDescending`, `expandable`,

@@ -119,6 +119,26 @@ func TestUIATreeAnnouncer(t *testing.T) {
 	}
 }
 
+// Landmarks are groups whose LandmarkType says which, and whose AriaRole
+// names them: the navigation and search landmarks have types of their
+// own, a region the custom one.
+func TestUIALandmarks(t *testing.T) {
+	for role, want := range map[platform.AccessRole]uint64{
+		platform.RoleNavigation: 80003, // UIA_NavigationLandmarkTypeId
+		platform.RoleSearch:     80004, // UIA_SearchLandmarkTypeId
+		platform.RoleRegion:     80000, // UIA_CustomLandmarkTypeId
+	} {
+		e := &uiaElement{n: platform.AccessNode{Role: role, Label: "Landmark"}}
+		var v variant
+		if e.property(uiaLandmarkTypeProperty, &v); v.VT != vtI4 || v.Val != want {
+			t.Errorf("role %d: landmark type %d, want %d", role, v.Val, want)
+		}
+		if uiaControlTypes[role] != 50026 || ariaRoles[role] == "" {
+			t.Errorf("role %d: control type %d, ARIA role %q", role, uiaControlTypes[role], ariaRoles[role])
+		}
+	}
+}
+
 func TestChildChanges(t *testing.T) {
 	e := func(id uint64) *uiaElement { return &uiaElement{n: platform.AccessNode{ID: id}} }
 	a, b, c, d := e(1), e(2), e(3), e(4)

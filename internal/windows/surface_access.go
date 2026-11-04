@@ -177,7 +177,7 @@ var uiaControlTypes = map[platform.AccessRole]int32{
 	platform.RoleMenu: 50009, platform.RoleMenuBar: 50010, platform.RoleMenuItem: 50011, platform.RoleMenuItemCheckBox: 50011,
 	platform.RoleMenuItemRadio: 50011, platform.RoleHeading: 50020, platform.RoleNavigation: 50026,
 	platform.RoleRegion: 50026, platform.RoleLog: 50026, platform.RoleTimer: 50026, platform.RoleAlert: 50026,
-	platform.RoleSeparator: 50038, platform.RoleRowHeader: 50035,
+	platform.RoleSeparator: 50038, platform.RoleRowHeader: 50035, platform.RoleSearch: 50026,
 }
 
 // ariaRoles are the ARIA roles of nodes whose control type does not say
@@ -186,7 +186,7 @@ var uiaControlTypes = map[platform.AccessRole]int32{
 var ariaRoles = map[platform.AccessRole]string{
 	platform.RoleNavigation: "navigation", platform.RoleRegion: "region", platform.RoleLog: "log",
 	platform.RoleTimer: "timer", platform.RoleAlert: "alert", platform.RoleSeparator: "separator",
-	platform.RoleRowHeader: "rowheader",
+	platform.RoleRowHeader: "rowheader", platform.RoleSearch: "search",
 }
 
 // variant is VARIANT, with the value of the types used here.
@@ -1242,7 +1242,9 @@ func (e *uiaElement) property(id int, v *variant) {
 	case uiaLandmarkTypeProperty:
 		switch n.Role {
 		case platform.RoleNavigation:
-			*v = variant{VT: vtI4, Val: 80004} // UIA_NavigationLandmarkTypeId
+			*v = variant{VT: vtI4, Val: 80003} // UIA_NavigationLandmarkTypeId
+		case platform.RoleSearch:
+			*v = variant{VT: vtI4, Val: 80004} // UIA_SearchLandmarkTypeId
 		case platform.RoleRegion:
 			*v = variant{VT: vtI4, Val: 80000} // UIA_CustomLandmarkTypeId
 		}

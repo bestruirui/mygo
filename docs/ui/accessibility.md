@@ -271,6 +271,7 @@ WAI-ARIA's Core Accessibility API Mappings say:
 | Role | What it is | macOS | Linux (ATK) | Windows (UI Automation) |
 |---|---|---|---|---|
 | `ui.RoleRegion` | a landmark with a `Label`, as an activity feed or a panel; without one, a group | `AXGroup`, `AXLandmarkRegion` | landmark, `xml-roles:region` | Group, the custom landmark type "region" |
+| `ui.RoleSearch` | a landmark holding what searches the app or a document, as the search field and its button at the top of a window | `AXGroup`, `AXLandmarkSearch` | landmark, `xml-roles:search` | Group, the search landmark type |
 | `ui.RoleLog` | a live region of messages added in order, as a chat's transcript | `AXGroup`, `AXApplicationLog` | log | Group "log", `LiveSetting` polite |
 | `ui.RoleTimer` | a count of time, as a countdown, read only when the user goes to it | `AXGroup`, `AXApplicationTimer` | timer | Group "timer" |
 | `ui.RoleAlert` | a live region of important news, as a field's error, read at once | `AXGroup`, `AXApplicationAlert` | notification | Group "alert", `LiveSetting` assertive |
@@ -310,5 +311,18 @@ ui.Row(c).Role(ui.RoleToolbar).Label("Format").Children(func() {
 A log reads out the elements it gained, those of each row together; an
 alert, its text. Keyed rows (`Key`) keep what a log showed apart from
 what it gained when rows come before others.
+
+Screen readers list landmarks and jump to them, so a search field and its
+button at the top of a window go in a search landmark, as HTML's
+`<search>`:
+
+```go
+ui.Row(c).Role(ui.RoleSearch).Label("Search mail").Gap(6).Children(func() {
+	ui.SearchField(c, &app.query).Label("Search mail").Grow(1)
+	if ui.Button(c, "Search").Clicked() {
+		app.search()
+	}
+})
+```
 
 Each component's page says what assistive technology sees of it.

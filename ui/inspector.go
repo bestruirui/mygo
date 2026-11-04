@@ -621,6 +621,8 @@ func roleName(r Role) string {
 		return "Separator"
 	case RoleRowHeader:
 		return "RowHeader"
+	case RoleSearch:
+		return "Search"
 	case RoleHeading:
 		return "Heading"
 	case RoleNavigation:

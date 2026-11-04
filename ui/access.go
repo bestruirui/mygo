@@ -110,6 +110,11 @@ const (
 	// RoleRowHeader is the cell naming its row of a table, as
 	// RoleColumnHeader names a column.
 	RoleRowHeader
+	// RoleSearch is a landmark holding what searches the app or a
+	// document, as the search field and its button at the top of a
+	// window: screen readers list it among the window's landmarks, and
+	// jump to it.
+	RoleSearch
 	// RoleNavigation is a landmark holding links that move around the
 	// app or a document, as a breadcrumb trail (Breadcrumbs) or a
 	// navigation bar: screen readers list it among the window's
@@ -285,7 +290,7 @@ func leafRole(r platform.AccessRole) bool {
 	case platform.RoleGroup, platform.RoleList, platform.RoleScroll, platform.RoleDialog, platform.RoleAlertDialog, platform.RolePopup, platform.RoleStatus,
 		platform.RoleTabList, platform.RoleTable, platform.RoleRow, platform.RoleCell, platform.RoleTree, platform.RoleListItem,
 		platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleNavigation,
-		platform.RoleRegion, platform.RoleLog, platform.RoleTimer, platform.RoleAlert:
+		platform.RoleRegion, platform.RoleLog, platform.RoleTimer, platform.RoleAlert, platform.RoleSearch:
 		return false
 	}
 	return true

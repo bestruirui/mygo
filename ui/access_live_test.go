@@ -7,9 +7,10 @@ import (
 	"github.com/egoist/mygo/internal/platform"
 )
 
-// TestRegionSeparatorRowHeader checks the roles of a landmark, a rule and
-// a row's header: a region is one only with a name, a rule taller than
-// wide runs up and down, and a row header is named by its content.
+// TestRegionSeparatorRowHeader checks the roles of landmarks, a rule and
+// a row's header: a region is one only with a name, a search landmark
+// holds its field and button, a rule taller than wide runs up and down,
+// and a row header is named by its content.
 func TestRegionSeparatorRowHeader(t *testing.T) {
 	tt := coreNewTester(func(c *context) {
 		coreColumn(c).AlignItems(Start).Children(func() {
@@ -18,6 +19,10 @@ func TestRegionSeparatorRowHeader(t *testing.T) {
 			})
 			coreColumn(c).Role(RoleRegion).Children(func() {
 				coreText(c, "Unnamed")
+			})
+			coreRow(c).Role(RoleSearch).Label("Site search").Children(func() {
+				coreText(c, "Query").Role(RoleTextField)
+				coreText(c, "Go").Role(RoleButton)
 			})
 			coreRow(c).Role(RoleToolbar).Label("Format").Height(20).Children(func() {
 				coreText(c, "Bold")
@@ -38,6 +43,14 @@ func TestRegionSeparatorRowHeader(t *testing.T) {
 	activity := accessNode(t, tree, platform.RoleRegion, "Activity")
 	if text := accessNode(t, tree, platform.RoleText, "Ann joined"); text.Parent < 0 || tree.Nodes[text.Parent].ID != activity.ID {
 		t.Errorf("the text is not in the region")
+	}
+	search := accessNode(t, tree, platform.RoleSearch, "Site search")
+	for _, name := range []string{"Query", "Go"} {
+		for _, n := range tree.Nodes {
+			if n.Label == name && (n.Parent < 0 || tree.Nodes[n.Parent].ID != search.ID) {
+				t.Errorf("%s is not in the search landmark", name)
+			}
+		}
 	}
 	for _, n := range tree.Nodes {
 		if n.Role == platform.RoleRegion && n.Label != "Activity" {

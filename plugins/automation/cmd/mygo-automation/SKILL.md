@@ -118,7 +118,7 @@ Roles are `group`, `text`, `heading`, `button`, `link`, `checkBox`,
 `popup`, `tooltip`, `splitter`, `status`, `toolbar`, `radioGroup`,
 `disclosure`, `colorWell`, `menu`, `menuBar`, `menuItem`,
 `menuItemCheckBox`, `menuItemRadio`, `region`, `log`, `timer`, `alert`,
-`separator`, `rowHeader` and `navigation`. States are `disabled`, `checked`,
+`separator`, `rowHeader`, `search` and `navigation`. States are `disabled`, `checked`,
 `mixed`, `selected`, `expanded`, `expandable`, `multiline`, `password`,
 `readOnly`, `selectable`, `multiselectable`, `offscreen`, `segment`,
 `search`, `invalid`, `sortAscending`, `sortDescending`, `vertical` and
