@@ -4002,6 +4002,32 @@ func (_handle Element) Column() Element {
 	return wrapElement(_node.Column())
 }
 
+// ColumnCount tells assistive technology how many columns a table, grid
+// or tree grid of your own has, built or not (aria-colcount).
+func (_handle Element) ColumnCount(n int) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.ColumnCount(n))
+}
+
+// ColumnIndex tells assistive technology the place of a cell or a column
+// header among all the columns of its table, grid or tree grid, from 1
+// (aria-colindex): for one that builds only the columns in view, or
+// leaves some out. Cells without one follow the one before them.
+func (_handle Element) ColumnIndex(i int) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.ColumnIndex(i))
+}
+
 // ColumnSpan makes the element span n columns of its grid, or, for a
 // negative n, every column from its start to the grid's last, as a header
 // across a grid does.
@@ -5860,6 +5886,22 @@ func (_handle Element) Modal() Element {
 	return wrapElement(_node.Modal())
 }
 
+// Multiselectable tells assistive technology whether the user chooses
+// several of the items of the element, a list, grid, tree or tree grid
+// of your own, as ARIA's aria-multiselectable: screen readers offer to
+// choose more than one. Its rows or items say which are chosen with
+// Checked, or Selected, which shows it too. Lists, tables and grid views
+// with a Selection tell it themselves.
+func (_handle Element) Multiselectable(on bool) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.Multiselectable(on))
+}
+
 // NoShadow takes off the outer and inner shadows added so far, as CSS's
 // box-shadow: none, so that the Shadow and InsetShadow calls after it
 // start afresh.
@@ -6467,6 +6509,22 @@ func (_handle Element) Row() Element {
 	return wrapElement(_node.Row())
 }
 
+// RowCount tells assistive technology how many rows a table, grid or tree
+// grid of your own has, built or not, header rows included, as ARIA's
+// aria-rowcount: one that builds only the rows in view says how many it
+// has, which screen readers read with the rows' RowIndex, as "row 4,121
+// of 10,000". The rows of a List and a Table say which of all they are
+// themselves.
+func (_handle Element) RowCount(n int) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.RowCount(n))
+}
+
 // RowDoubleClicked reports, while a row of a List or a Table builds, that
 // the row was double-clicked since the last frame with the pointer over the
 // element: a cell sees its row's double click this way and leaves the click
@@ -6486,6 +6544,20 @@ func (_handle Element) RowDoubleClicked() bool {
 	_ctx := _node.c
 	_ = _ctx
 	return _node.RowDoubleClicked()
+}
+
+// RowIndex tells assistive technology the place of a row, or of a cell,
+// among all the rows of its table, grid or tree grid, from 1 for the
+// first, header rows included, as ARIA's aria-rowindex: for one that
+// builds only the rows in view, with its RowCount. A cell takes its row's.
+func (_handle Element) RowIndex(i int) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.RowIndex(i))
 }
 
 // RowSpan makes the element span n rows of its grid, or, for a negative n,

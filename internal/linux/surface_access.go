@@ -318,6 +318,8 @@ func loadAccessNames() {
 		platform.RoleHeading: {"heading", "label"},
 		// A landmark, whose xml-roles attribute says which, as Chromium's.
 		platform.RoleNavigation: {"landmark", "panel"},
+		// Tables, whose xml-roles attribute says which, as Chromium's.
+		platform.RoleGrid: {"table"}, platform.RoleTreeGrid: {"tree table", "table"},
 	} {
 		atkRoles[r] = role(names...)
 	}
@@ -366,6 +368,29 @@ type accessNode struct {
 // outline that its list chooses.
 func chooses(n platform.AccessNode) bool {
 	return (n.Role == platform.RoleListItem || n.Role == platform.RoleRow || n.Role == platform.RoleTreeItem) && n.States&platform.AccessSelectable != 0
+}
+
+// gridNames are the object attributes of gridAttributes' values, as
+// Chromium names them.
+var gridNames = [...]string{"rowcount", "colcount", "rowindex", "colindex"}
+
+// gridAttributes returns the size of a table or a grid, and the place of
+// a row or a cell in it, as the app gave them: 0 for those not given. A
+// cell's row index is its row's unless it has one of its own.
+func (an *accessNode) gridAttributes() (v [4]int) {
+	n := &an.n
+	switch {
+	case n.Role.Tabular():
+		v[0], v[1] = n.RowCount, n.ColCount
+	case n.Role == platform.RoleRow:
+		v[2] = n.RowIndex
+	case n.Role == platform.RoleCell || n.Role == platform.RoleColumnHeader:
+		v[2], v[3] = n.RowIndex, n.ColIndex
+		if p := an.parent; v[2] == 0 && p != nil && p.n.Role == platform.RoleRow {
+			v[2] = p.n.RowIndex
+		}
+	}
+	return v
 }
 
 // chosenRows returns the rows of a list or table that are chosen.
@@ -436,7 +461,7 @@ func accessType(n platform.AccessNode) uintptr {
 		return editableType
 	case platform.RoleText:
 		return textType
-	case platform.RoleList, platform.RoleTable, platform.RoleTree:
+	case platform.RoleList, platform.RoleTable, platform.RoleTree, platform.RoleGrid, platform.RoleTreeGrid:
 		if n.States&platform.AccessSelectable != 0 {
 			return selectionType // choosing its rows
 		}
@@ -925,8 +950,10 @@ func initAccessCallbacks() {
 	})
 	// Object attributes: the placeholder of a text field, the place of a
 	// row among its list's, which Orca reads as "5 of 10000", which item
-	// the node is the current one of (aria-current), and the ARIA role of
-	// a landmark.
+	// the node is the current one of (aria-current), the size of a grid
+	// and the place of its rows and cells as the app gave them
+	// (aria-rowcount and the like), and the ARIA role of a landmark or a
+	// grid.
 	attributes := purego.NewCallback(func(obj ptr) ptr {
 		an := node(obj)
 		if an == nil {
@@ -958,8 +985,18 @@ func initAccessCallbacks() {
 		if c := an.n.Current; c != platform.CurrentNone {
 			add("current", c.String())
 		}
-		if an.n.Role == platform.RoleNavigation {
+		switch an.n.Role {
+		case platform.RoleNavigation:
 			add("xml-roles", "navigation")
+		case platform.RoleGrid:
+			add("xml-roles", "grid")
+		case platform.RoleTreeGrid:
+			add("xml-roles", "treegrid")
+		}
+		for i, v := range an.gridAttributes() {
+			if v > 0 {
+				add(gridNames[i], strconv.Itoa(v))
+			}
 		}
 		// The order of the column a table is sorted by, as Chromium says.
 		switch {

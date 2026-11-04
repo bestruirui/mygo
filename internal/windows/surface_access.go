@@ -22,7 +22,10 @@ import (
 // sliders and progress bars, Value text fields and pop-up buttons, which
 // ExpandCollapse opens; ScrollItem scrolls what is in scroll containers
 // into view. Rows say which of all of their list's they are
-// (PositionInSet, SizeOfSet), as a list builds only those in view.
+// (PositionInSet, SizeOfSet), as a list builds only those in view. Tables
+// and grids have the Grid and Table patterns, their cells and column
+// headers GridItem and TableItem, which say where the cells are among all
+// the rows and columns, built or not.
 //
 // Two methods take doubles, which Go callbacks cannot read: thunks in
 // assembly move their bits to integer registers first (uia_*.s).
@@ -77,6 +80,10 @@ const (
 	ifaceScrollItem
 	ifaceHwndOverride
 	ifaceText
+	ifaceGrid
+	ifaceGridItem
+	ifaceTable
+	ifaceTableItem
 	uiaIfaces
 )
 
@@ -94,11 +101,16 @@ var uiaIIDs = [uiaIfaces]GUID{
 	guid("2360c714-4bf1-4b26-ba65-9b21316127eb"), // IScrollItemProvider
 	guid("1d5df27c-8947-4425-b8d9-79787bb460b8"), // IRawElementProviderHwndOverride
 	guid("3589c92c-63f3-4367-99bb-ada653b77cf2"), // ITextProvider
+	guid("b17d6187-0907-464b-a168-0ef17a1572b1"), // IGridProvider
+	guid("d02541f1-fb81-4d64-ae32-f520f8a6dbd1"), // IGridItemProvider
+	guid("9c860395-97b3-490a-b52a-858cc22af166"), // ITableProvider
+	guid("b9734fa6-771f-4d78-9c90-2517999349cd"), // ITableItemProvider
 }
 
 // Pattern identifiers of UI Automation, by interface.
 var uiaPatterns = map[uintptr]int{10000: ifaceInvoke, 10001: ifaceSelection, 10002: ifaceValue, 10003: ifaceRangeValue,
-	10005: ifaceExpandCollapse, 10010: ifaceSelectionItem, 10014: ifaceText, 10015: ifaceToggle, 10017: ifaceScrollItem}
+	10005: ifaceExpandCollapse, 10006: ifaceGrid, 10007: ifaceGridItem, 10010: ifaceSelectionItem, 10012: ifaceTable,
+	10013: ifaceTableItem, 10014: ifaceText, 10015: ifaceToggle, 10017: ifaceScrollItem}
 
 const (
 	uiaRootObjectID  = -25
@@ -173,6 +185,7 @@ var uiaControlTypes = map[platform.AccessRole]int32{
 	platform.RoleMeter: 50012, platform.RoleStepper: 50016, platform.RoleColorWell: 50000, platform.RoleAlertDialog: 50033,
 	platform.RoleMenu: 50009, platform.RoleMenuBar: 50010, platform.RoleMenuItem: 50011, platform.RoleMenuItemCheckBox: 50011,
 	platform.RoleMenuItemRadio: 50011, platform.RoleHeading: 50020, platform.RoleNavigation: 50026,
+	platform.RoleGrid: 50028, platform.RoleTreeGrid: 50028, // DataGrid
 }
 
 // variant is VARIANT, with the value of the types used here.
@@ -295,8 +308,12 @@ func (e *uiaElement) supports(i int) bool {
 		}
 		return false
 	case ifaceSelection:
-		// A list or table choosing its rows.
-		return (n.Role == platform.RoleList || n.Role == platform.RoleTable || n.Role == platform.RoleTree) && n.States&platform.AccessSelectable != 0
+		// A list, table or grid choosing its rows.
+		return (n.Role == platform.RoleList || n.Role == platform.RoleTree || n.Role.Tabular()) && n.States&platform.AccessSelectable != 0
+	case ifaceGrid, ifaceTable:
+		return n.Role.Tabular()
+	case ifaceGridItem, ifaceTableItem:
+		return cellOf(n.Role) && e.grid() != nil
 	case ifaceScrollItem:
 		return n.Actions&platform.ActionScrollIntoView != 0
 	case ifaceRangeValue:
@@ -985,13 +1002,7 @@ func initUIA() {
 			if e == nil {
 				return hr
 			}
-			chosen := e.chosen()
-			sa, _, _ := procSafeArrayCreateVector.Call(vtUnknown, 0, uintptr(len(chosen)))
-			for i, d := range chosen {
-				index := int32(i)
-				procSafeArrayPutElement.Call(sa, uintptr(unsafe.Pointer(&index)), d.ptr(ifaceSimple))
-			}
-			*(*uintptr)(native(p)) = sa
+			*(*uintptr)(native(p)) = elementArray(e.chosen())
 			return sOK
 		}),
 		cb(func(this, p uintptr) uintptr { // get_CanSelectMultiple
@@ -1008,6 +1019,8 @@ func initUIA() {
 			return sOK
 		}),
 	)
+
+	gridVtbls(vtbl, live)
 
 	uiaVtbls[ifaceScrollItem] = vtbl(
 		cb(func(this uintptr) uintptr { // ScrollIntoView
@@ -1206,8 +1219,15 @@ func (e *uiaElement) property(id int, v *variant) {
 			*v = variant{VT: vtI4, Val: 80004} // UIA_NavigationLandmarkTypeId
 		}
 	case uiaAriaRoleProperty:
-		if n.Role == platform.RoleNavigation {
+		// The ARIA roles of the roles UI Automation's control types do
+		// not tell apart, as Chromium gives them.
+		switch n.Role {
+		case platform.RoleNavigation:
 			str("navigation")
+		case platform.RoleGrid:
+			str("grid")
+		case platform.RoleTreeGrid:
+			str("treegrid")
 		}
 	case uiaAriaPropertiesProperty:
 		str(ariaProperties(n))
@@ -1226,6 +1246,17 @@ func ariaProperties(n platform.AccessNode) string {
 		props = append(props, "current="+c.String())
 	}
 	return strings.Join(props, ";")
+}
+
+// elementArray returns a SAFEARRAY of the providers of elements, as the
+// patterns' methods return several.
+func elementArray(es []*uiaElement) uintptr {
+	sa, _, _ := procSafeArrayCreateVector.Call(vtUnknown, 0, uintptr(len(es)))
+	for i, d := range es {
+		index := int32(i)
+		procSafeArrayPutElement.Call(sa, uintptr(unsafe.Pointer(&index)), d.ptr(ifaceSimple))
+	}
+	return sa
 }
 
 // chosen returns the elements chosen in the element's Selection.

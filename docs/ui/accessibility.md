@@ -52,6 +52,10 @@ ui.Text(c, "Appearance").Bold().Role(ui.RoleHeading).Level(2)
 ui.Row(c).Role(ui.RoleNavigation).Label("Sections").Children(sectionLinks)
 ```
 
+`ui.RoleGrid` and `ui.RoleTreeGrid` are tables of your own whose cells
+take the focus and the arrow keys, as a spreadsheet's, where
+`ui.RoleTable` is one to read: see [Grids](#grids).
+
 ## States
 
 The bases tell assistive technology what their widgets show. A widget of
@@ -67,6 +71,9 @@ your own tells it with these, as ARIA's states do on the web:
 | `ActiveDescendant(e)` | the option that has the focus while the element keeps it, as the one the arrows are on in a menu or a list |
 | `Busy(on)` | that the element's content is about to change, as a region loading: screen readers wait for it before reading it |
 | `Current(kind)` | that the element is the current one of the items around it: `ui.CurrentPage` (the page the user is on), `CurrentStep`, `CurrentLocation`, `CurrentDate`, `CurrentTime` or `CurrentItem` |
+| `Multiselectable(on)` | that the user chooses several of the items of a list, grid, tree or tree grid of your own |
+| `RowCount(n)`, `ColumnCount(n)` | how many rows and columns a table or grid has, built or not |
+| `RowIndex(i)`, `ColumnIndex(i)` | which of all the rows a row or a cell is in, and which of all the columns a cell is in, from 1 |
 
 ```go
 all := ui.CheckboxBase(c, &app.all).Label("Select all")
@@ -174,7 +181,76 @@ named by the text inside them, and each says which of all the rows it is,
 its rows gives assistive technology the focus on the row chosen: Up and
 Down are read as they move the choice, and focusing a row chooses it. A
 screen reader moving out of view asks the list to scroll there, which
-builds the rows it reaches. `Label` names a list or a table.
+builds the rows it reaches. `Label` names a list or a table. A table of
+your own, or one whose cells take the arrow keys, is a
+[grid](#grids).
+
+## Grids
+
+A grid is a table whose cells take the focus and move it with the arrow
+keys, as a spreadsheet's or a data grid's, where `ui.RoleTable` is one to
+read; `ui.RoleTreeGrid` is a grid whose rows open and close as a tree's
+items do, with `Level` and `Expanded` on its rows. Their rows, cells and
+column headers are `ui.RoleRow`, `ui.RoleCell` and
+`ui.RoleColumnHeader`, as a table's: build the rows directly inside the
+grid (an element without a role between them is left out), and the
+cells directly inside the rows.
+
+One of thousands of rows builds only those in view, so it tells screen
+readers how many it has, `RowCount` and `ColumnCount` (ARIA's
+`aria-rowcount` and `aria-colcount`, header rows counted), and each row
+which of all it is, `RowIndex` from 1 (`aria-rowindex`); a cell of a
+column not built, or after one left out, says its column with
+`ColumnIndex` (`aria-colindex`), and the cells after it follow it.
+Screen readers then read "row 4,121 of 10,000". `Multiselectable(true)`
+says that the user chooses several rows (`aria-multiselectable`), and
+each row says whether it is chosen with `Selected`, or `Checked`, which
+does not paint it:
+
+```go
+ui.Column(c).Role(ui.RoleGrid).Label("Sheet").RowCount(len(app.rows)+1).ColumnCount(len(cols)).Multiselectable(true).Children(func() {
+	ui.Row(c).Role(ui.RoleRow).RowIndex(1).Children(func() {
+		for _, col := range cols {
+			ui.Box(c).Role(ui.RoleColumnHeader).Children(func() { ui.Text(c, col.Title) })
+		}
+	})
+	for _, r := range app.visibleRows() { // 4120 to 4160
+		ui.Row(c).Role(ui.RoleRow).RowIndex(r + 2).Selected(app.chosen[r]).Children(func() {
+			for j, col := range cols {
+				ui.Box(c).Role(ui.RoleCell).Focusable().Children(func() { ui.Text(c, app.cell(r, j)) })
+			}
+		})
+	}
+})
+```
+
+A [List](list.md) shown as a grid builds only the rows in view itself:
+`Role(ui.RoleGrid)` makes its rows rows rather than list items, which
+already say which of all they are, as its `Selection` chooses several:
+
+```go
+ui.List(c, &app.rows, len(app.data), func(i int) {
+	ui.Row(c).Children(func() {
+		for j := range cols {
+			ui.Box(c).Role(ui.RoleCell).Children(func() { ui.Text(c, app.cell(i, j)) })
+		}
+	})
+}).Role(ui.RoleGrid).Label("Sheet").ColumnCount(len(cols))
+```
+
+A [Table](table.md)'s rows say which of all they are themselves, and so
+does a list's: the counts and indexes are for grids and tables of your
+own. A grid is AppKit's `AXTable`, its rows and cells telling the counts
+and indexes in `AXARIARowCount`, `AXARIAColumnCount`, `AXARIARowIndex`
+and `AXARIAColumnIndex` as WebKit's do, and its rows `AXIndex` from them;
+ATK's table (a tree grid's tree table) with the `xml-roles` attribute
+`grid` (`treegrid`) and the `rowcount`, `colcount`, `rowindex` and
+`colindex` attributes, as Chromium gives them; and UI Automation's
+DataGrid, whose `Grid` and `Table` patterns, and its cells' `GridItem`
+and `TableItem`, say where each cell is among all, from 0, and which
+column headers name it, as tables' do. A grid choosing several rows is
+`multiselectable` on Linux and `CanSelectMultiple` on Windows, its rows
+`selectable` and `selected` there, and in its `AXSelectedRows` on macOS.
 
 ## Out of the pointer's way
 

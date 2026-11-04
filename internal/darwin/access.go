@@ -125,6 +125,9 @@ var accessRoles = map[platform.AccessRole][2]string{
 	// WebKit's headings, whose value is their level, and landmarks.
 	platform.RoleHeading:    {"AXHeading", ""},
 	platform.RoleNavigation: {"AXGroup", "AXLandmarkNavigation"},
+	// Grids and tree grids are tables, as WebKit's.
+	platform.RoleGrid:     {"AXTable", ""},
+	platform.RoleTreeGrid: {"AXTable", ""},
 }
 
 // menuItem reports whether nodes of a role are items of a menu.
@@ -150,6 +153,50 @@ func markChar(n platform.AccessNode) string {
 func chooses(n platform.AccessNode) bool {
 	return (n.Role == platform.RoleListItem || n.Role == platform.RoleRow || n.Role == platform.RoleTreeItem) && n.States&platform.AccessSelectable != 0
 }
+
+// rowRole reports whether nodes of a role are rows of a list, a table or
+// an outline.
+func rowRole(r platform.AccessRole) bool {
+	return r == platform.RoleRow || r == platform.RoleListItem || r == platform.RoleTreeItem
+}
+
+// ariaGrid returns the value of an attribute of a table's size or a row's
+// or a cell's place in it that the app gave (aria-rowcount and the like),
+// as WebKit gives them, 0 for none: a cell's row index is its row's unless
+// it has one of its own.
+func (el *accessElement) ariaGrid(attr string) int {
+	n := &el.node
+	switch attr {
+	case "AXARIARowCount":
+		if n.Role.Tabular() {
+			return n.RowCount
+		}
+	case "AXARIAColumnCount":
+		if n.Role.Tabular() {
+			return n.ColCount
+		}
+	case "AXARIARowIndex":
+		switch {
+		case n.Role == platform.RoleRow:
+			return n.RowIndex
+		case n.Role == platform.RoleCell || n.Role == platform.RoleColumnHeader:
+			if n.RowIndex > 0 {
+				return n.RowIndex
+			}
+			if row := el.s.w.b.byAccess[el.parent]; row != nil && row.node.Role == platform.RoleRow {
+				return row.node.RowIndex
+			}
+		}
+	case "AXARIAColumnIndex":
+		if n.Role == platform.RoleCell || n.Role == platform.RoleColumnHeader {
+			return n.ColIndex
+		}
+	}
+	return 0
+}
+
+// ariaGridAttrs are the attributes ariaGrid answers.
+var ariaGridAttrs = [...]string{"AXARIARowCount", "AXARIAColumnCount", "AXARIARowIndex", "AXARIAColumnIndex"}
 
 func roleOf(n platform.AccessNode) (role, subrole string) {
 	r := accessRoles[n.Role]
@@ -313,6 +360,10 @@ func (el *accessElement) apply(n platform.AccessNode, fresh bool) (valueChanged 
 	}
 	if n.PosInSet > 0 && (fresh || n.PosInSet != o.PosInSet) {
 		send(obj, "setAccessibilityIndex:", uintptr(n.PosInSet-1))
+	} else if n.PosInSet == 0 && n.RowIndex > 0 && rowRole(n.Role) && (fresh || n.RowIndex != o.RowIndex || o.PosInSet != 0) {
+		// The row of a grid built only where it shows, which says which
+		// of all it is (aria-rowindex).
+		send(obj, "setAccessibilityIndex:", uintptr(n.RowIndex-1))
 	}
 	if chooses(n) && (fresh || !chooses(o) || n.States&platform.AccessChecked != o.States&platform.AccessChecked) {
 		send(obj, "setAccessibilitySelected:", boolArg(n.States&platform.AccessChecked != 0))
@@ -439,12 +490,14 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 				v.accessParent = 0
 			}
 		}
-		// Lists and tables: their rows, those that show, those chosen, and
-		// how many they have, built or not. A list's own rows say where
-		// they are among all; the rows of other tables, where among those.
+		// Lists, tables and grids: their rows, those that show, those
+		// chosen, and how many they have, built or not. A list's own rows
+		// say where they are among all, as do those of a grid the app
+		// says (aria-rowindex); the rows of other tables, where among
+		// those.
 		var selectionChanged []*accessElement
 		for i, n := range tree.Nodes {
-			if n.Role != platform.RoleList && n.Role != platform.RoleTable && n.Role != platform.RoleTree {
+			if n.Role != platform.RoleList && n.Role != platform.RoleTree && !n.Role.Tabular() {
 				continue
 			}
 			el := s.elements[n.ID]
@@ -452,10 +505,10 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 			var chosenIDs []uint64
 			for _, cid := range children[i] {
 				c := s.elements[cid]
-				if r := c.node.Role; r != platform.RoleRow && r != platform.RoleListItem && r != platform.RoleTreeItem || n.SetSize > 0 && c.node.PosInSet == 0 {
+				if !rowRole(c.node.Role) || n.SetSize > 0 && c.node.PosInSet == 0 && c.node.RowIndex == 0 {
 					continue // a table's header
 				}
-				if c.node.PosInSet == 0 {
+				if c.node.PosInSet == 0 && c.node.RowIndex == 0 {
 					send(c.obj, "setAccessibilityIndex:", uintptr(len(rows)))
 				}
 				rows = append(rows, c.obj)
@@ -468,6 +521,9 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 				}
 			}
 			count := n.SetSize
+			if count == 0 {
+				count = n.RowCount
+			}
 			if count == 0 {
 				count = len(rows)
 			}
@@ -643,6 +699,13 @@ func registerAccessClass() {
 			if el.node.KeyShortcuts != "" {
 				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXKeyShortcutsValue")))
 			}
+			// The size of a grid, and the place of its rows and cells, as
+			// WebKit's say aria-rowcount and the like.
+			for _, attr := range ariaGridAttrs {
+				if el.ariaGrid(attr) > 0 {
+					names = send(names, "arrayByAddingObject:", uintptr(nsString(attr)))
+				}
+			}
 			return names
 		}),
 		method("accessibilityAttributeValue:", func(self id, cmd objc.SEL, attr id) id {
@@ -672,6 +735,10 @@ func registerAccessClass() {
 				case "AXKeyShortcutsValue":
 					if el.node.KeyShortcuts != "" {
 						return nsString(el.node.KeyShortcuts)
+					}
+				case "AXARIARowCount", "AXARIAColumnCount", "AXARIARowIndex", "AXARIAColumnIndex":
+					if v := el.ariaGrid(stringOf(attr)); v > 0 {
+						return nsNumberInt(v)
 					}
 				}
 			}

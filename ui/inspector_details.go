@@ -563,6 +563,14 @@ func properties(rt *engine, e *node) []inspSection {
 	if e.current != CurrentNone {
 		acc.rows = append(acc.rows, inspDecl{name: "current", value: platform.AccessCurrent(e.current).String()})
 	}
+	if e.chooseMany {
+		acc.rows = append(acc.rows, inspDecl{name: "multiselectable", value: "true"})
+	}
+	for i, name := range [...]string{"rowcount", "colcount", "rowindex", "colindex"} {
+		if v := e.accGrid[i]; v > 0 {
+			acc.rows = append(acc.rows, inspDecl{name: name, value: strconv.Itoa(int(v))})
+		}
+	}
 	return []inspSection{el, state, acc}
 }
 

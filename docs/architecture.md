@@ -2581,7 +2581,21 @@ either.
   rows is `AccessMultiselectable` (ATK's `multiselectable`, UIA's
   `CanSelectMultiple`, rows then raising `ElementAddedToSelection` and
   `ElementRemovedFromSelection` unless chosen alone), and its focus is on
-  the row last chosen.
+  the row last chosen. Grids and tree grids (`RoleGrid`, `RoleTreeGrid`)
+  are tables to the backends (`AccessRole.Tabular`), whose rows a `List`
+  shown as one makes rows rather than list items; a row of an app's own
+  saying whether it is chosen (`Checked`, `Selected`) is
+  `AccessSelectable`, as is the table holding it. The counts and indexes
+  an app gives a grid built only where it shows (`RowCount`,
+  `ColCount`, `RowIndex`, `ColIndex`, ARIA's aria-rowcount and the like)
+  go to WebKit's `AXARIARowCount` and the like, and the rows' `AXIndex`
+  and the table's `AXRowCount` where `PosInSet` and `SetSize` say
+  nothing; to ATK's `rowcount`, `colcount`, `rowindex` and `colindex`
+  attributes beside `xml-roles` `grid` or `treegrid`, as Chromium's; and
+  to UI Automation's `Grid`, `GridItem`, `Table` and `TableItem`
+  patterns of tables and their cells (`uia_grid.go`), which count from 0
+  as the app gave them, else as rows say which of all they are after the
+  header rows above them, else by what is built, found as a client asks.
 - **The connection.** `content.go` attaches the content to its window
   through `internal/surface.Conn`, which carries the surface and, as
   functions, what the content needs of the app (the clipboard, dragging

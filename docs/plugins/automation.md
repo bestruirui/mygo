@@ -123,9 +123,12 @@ A node has its `id`, the `parent`'s ID unless it is at the top, its
 `role`, and those of `key`, `label`, `value`, `placeholder`,
 `description`, `bounds`, `states`, `actions`, `min`, `max`, `now` and
 `step` (of sliders, progress bars, meters and steppers), `selection` (of
-text fields, in runes), `level`, `posInSet`, `setSize` and `current`
-(what it is the current one of, as ARIA's `aria-current`: `true`,
-`page`, `step`, `location`, `date` or `time`) that it has.
+text fields, in runes), `level`, `posInSet`, `setSize`, `rowCount`,
+`colCount`, `rowIndex` and `colIndex` (the size of a table or a grid,
+and the place of a row or a cell in it from 1, as the app gave them:
+ARIA's `aria-rowcount` and the like) and `current` (what it is the
+current one of, as ARIA's `aria-current`: `true`, `page`, `step`,
+`location`, `date` or `time`) that it has.
 IDs are strings of digits: they are 64-bit, which JavaScript's numbers
 would round. `keyShortcuts` is the keys that press or focus the element,
 as ARIA's `aria-keyshortcuts`, written as the platform's menus write
@@ -153,7 +156,7 @@ a column that lays others out has no node, keyed or not. Roles are
 `listItem`, `menuButton`, `toolbar`, `radioGroup`, `toggleButton`,
 `comboBox`, `disclosure`, `meter`, `stepper`, `colorWell`,
 `alertDialog`, `menu`, `menuBar`, `menuItem`, `menuItemCheckBox`,
-`menuItemRadio`, `heading` and `navigation`. States are `focusable`, `disabled`,
+`menuItemRadio`, `heading`, `navigation`, `grid` and `treeGrid`. States are `focusable`, `disabled`,
 `checked`, `mixed`, `selected`, `expanded`, `multiline`, `password`,
 `readOnly`, `selectable`, `offscreen`, `multiselectable`, `segment`,
 `search`, `invalid`, `sortAscending`, `sortDescending`, `expandable`,

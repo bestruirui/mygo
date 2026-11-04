@@ -93,7 +93,19 @@ const (
 	// navigation bar: screen readers list it among the window's
 	// landmarks, and jump to it.
 	RoleNavigation
+	// RoleGrid is a table whose cells take the focus and the arrow keys,
+	// as a spreadsheet's, where RoleTable is one to read; RoleTreeGrid is
+	// a grid whose rows open and close as a tree's items do (Expanded,
+	// Level). Their rows, cells and column headers are RoleRow, RoleCell
+	// and RoleColumnHeader, as a table's, and the rows of a List shown as
+	// one are its rows.
+	RoleGrid
+	RoleTreeGrid
 )
+
+// tabular reports whether elements of a role hold rows of cells: tables,
+// grids and tree grids.
+func tabular(r Role) bool { return r == RoleTable || r == RoleGrid || r == RoleTreeGrid }
 
 // Role sets what the element is to assistive technology, for an element
 // drawn as a widget it is not built from, such as a custom toggle.
@@ -218,6 +230,56 @@ func (e *node) KeyShortcuts(mods Modifiers, key Key) *node {
 	return e
 }
 
+// RowCount tells assistive technology how many rows a table, grid or tree
+// grid of your own has, built or not, header rows included, as ARIA's
+// aria-rowcount: one that builds only the rows in view says how many it
+// has, which screen readers read with the rows' RowIndex, as "row 4,121
+// of 10,000". The rows of a List and a Table say which of all they are
+// themselves.
+func (e *node) RowCount(n int) *node {
+	e.accGrid[0] = int32(max(n, 0))
+	return e
+}
+
+// ColumnCount tells assistive technology how many columns a table, grid
+// or tree grid of your own has, built or not (aria-colcount).
+func (e *node) ColumnCount(n int) *node {
+	e.accGrid[1] = int32(max(n, 0))
+	return e
+}
+
+// RowIndex tells assistive technology the place of a row, or of a cell,
+// among all the rows of its table, grid or tree grid, from 1 for the
+// first, header rows included, as ARIA's aria-rowindex: for one that
+// builds only the rows in view, with its RowCount. A cell takes its row's.
+func (e *node) RowIndex(i int) *node {
+	e.accGrid[2] = int32(max(i, 0))
+	return e
+}
+
+// ColumnIndex tells assistive technology the place of a cell or a column
+// header among all the columns of its table, grid or tree grid, from 1
+// (aria-colindex): for one that builds only the columns in view, or
+// leaves some out. Cells without one follow the one before them.
+func (e *node) ColumnIndex(i int) *node {
+	e.accGrid[3] = int32(max(i, 0))
+	return e
+}
+
+// Multiselectable tells assistive technology whether the user chooses
+// several of the items of the element, a list, grid, tree or tree grid
+// of your own, as ARIA's aria-multiselectable: screen readers offer to
+// choose more than one. Its rows or items say which are chosen with
+// Checked, or Selected, which shows it too. Lists, tables and grid views
+// with a Selection tell it themselves.
+func (e *node) Multiselectable(on bool) *node {
+	e.chooseMany = on
+	if on {
+		e.choosesItems = true // and its items are chosen
+	}
+	return e
+}
+
 // ActiveDescendant tells assistive technology that d has the keyboard
 // focus while the element does: the option the arrows are on in a list or
 // a menu that keeps the focus itself, as a combobox's input does. Call it
@@ -234,6 +296,12 @@ func (e *node) accessRole() (platform.AccessRole, bool) {
 	case RoleNone:
 		return 0, false
 	case RoleAuto:
+	case RoleListItem:
+		// The rows of a List shown as a table or a grid are its rows.
+		if e.listRow && e.parent != nil && tabular(e.parent.role) {
+			return platform.RoleRow, true
+		}
+		return platform.RoleListItem, true
 	default:
 		return platform.AccessRole(e.role - RoleGroup), true
 	}
@@ -262,7 +330,8 @@ func leafRole(r platform.AccessRole) bool {
 	switch r {
 	case platform.RoleGroup, platform.RoleList, platform.RoleScroll, platform.RoleDialog, platform.RoleAlertDialog, platform.RolePopup, platform.RoleStatus,
 		platform.RoleTabList, platform.RoleTable, platform.RoleRow, platform.RoleCell, platform.RoleTree, platform.RoleListItem,
-		platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleNavigation:
+		platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleNavigation,
+		platform.RoleGrid, platform.RoleTreeGrid:
 		return false
 	}
 	return true
@@ -418,6 +487,9 @@ func (rt *engine) accessElement(t *platform.AccessTree, e *node, parent int, scr
 			n.Actions |= platform.ActionScrollIntoView
 		}
 		rt.accessDetails(e, n)
+		if n.Role == platform.RoleRow && e.checked != 0 && n.States&platform.AccessSelectable == 0 {
+			chooseRow(t, len(t.Nodes)-1)
+		}
 		parent = len(t.Nodes) - 1
 		if e.kind == kindText {
 			rt.accessInline(t, e, parent)
@@ -448,6 +520,20 @@ func (rt *engine) accessElement(t *platform.AccessTree, e *node, parent int, scr
 	for ch := e.first; ch != nil; ch = ch.next {
 		if ch.flags&flagAbsolute != 0 {
 			rt.accessElement(t, ch, parent, scrolled, focused)
+		}
+	}
+}
+
+// chooseRow makes node i, a row of your own that says whether it is
+// chosen (Checked, Selected), one its table chooses, as ARIA's rows of a
+// grid with aria-selected: the table, grid or tree grid around it holds
+// the choice.
+func chooseRow(t *platform.AccessTree, i int) {
+	t.Nodes[i].States |= platform.AccessSelectable
+	for p := t.Nodes[i].Parent; p >= 0; p = t.Nodes[p].Parent {
+		if t.Nodes[p].Role.Tabular() {
+			t.Nodes[p].States |= platform.AccessSelectable
+			return
 		}
 	}
 }
@@ -521,6 +607,7 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	n.Level = e.level
 	n.Value = e.accValue
 	n.KeyShortcuts = e.keyShortcuts
+	n.RowCount, n.ColCount, n.RowIndex, n.ColIndex = int(e.accGrid[0]), int(e.accGrid[1]), int(e.accGrid[2]), int(e.accGrid[3])
 	if e.hasRange {
 		n.Min, n.Max, n.Now, n.Step = e.accRange[0], e.accRange[1], e.accRange[2], e.accStep
 	}

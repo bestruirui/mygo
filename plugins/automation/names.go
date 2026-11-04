@@ -20,7 +20,8 @@ var roleNames = [...]string{
 	"row", "cell", "columnHeader", "tree", "treeItem", "listItem", "menuButton",
 	"toolbar", "radioGroup", "toggleButton", "comboBox", "disclosure", "meter",
 	"stepper", "colorWell", "alertDialog", "menu", "menuBar", "menuItem",
-	"menuItemCheckBox", "menuItemRadio", "heading", "navigation",
+	"menuItemCheckBox", "menuItemRadio", "heading", "navigation", "grid",
+	"treeGrid",
 }
 
 func roleName(r platform.AccessRole) string {

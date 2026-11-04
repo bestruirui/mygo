@@ -157,7 +157,10 @@ type TestAccessNode struct {
 	// its object attributes.
 	Busy, Active bool
 	Attributes   map[string]string
-	obj          ptr
+	// Selectable, Selected and Multiselectable are its ATK states of
+	// those names, and Selection whether it implements AtkSelection.
+	Selectable, Selected, Multiselectable, Selection bool
+	obj                                              ptr
 }
 
 func loadAccessTests() {
@@ -217,6 +220,10 @@ func TestAccessibility(handle uintptr) ([]TestAccessNode, bool) {
 			}
 			n.Busy = atkStateSetContainsState(states, atkStates.busy)
 			n.Active = atkStateSetContainsState(states, atkStates.active)
+			n.Selectable = atkStateSetContainsState(states, atkStates.selectable)
+			n.Selected = atkStateSetContainsState(states, atkStates.selected)
+			n.Multiselectable = atkStateSetContainsState(states, atkStates.multiselectable)
+			n.Selection = gTypeCheckInstanceIsA(child, atkSelectionGetType())
 			gObjectUnref(states)
 			if set := atkObjectGetAttributes(child); set != 0 {
 				// A GSList of AtkAttribute: name and value.

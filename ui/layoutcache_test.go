@@ -458,7 +458,7 @@ func TestLayoutInputs(t *testing.T) {
 		"inputFn observeFn textClient caret takesText noIME copyData webView maximizeButton fit gray objectPos dismissed rotate label widget role " +
 		"checked expanded busy current vertical tip highlighted keepOpen accValue accRange hasRange accFill accStep barInset scrollBase hideScrollbars keepScrollbars barsFrom snap snapAlign " +
 		"listRow rowIndex rowsOf focusGroup groupSelects segment activeDescendant nameFrom nameJoin focusTo " +
-		"keyShortcuts " +
+		"keyShortcuts accGrid " +
 		"setPos setSize choosesItems search description invalid followX sort level expandable " +
 		"chooseMany serial ignoreInput accessHidden themed lift ringOffset ringColor ringSet clipping zIndex zOrder"
 	known := map[string]bool{}
