@@ -181,6 +181,17 @@ func roleOf(n platform.AccessNode) (role, subrole string) {
 	return role, subrole
 }
 
+// expands reports whether a node opens and closes what it shows: the
+// triggers of popups and disclosures, an item of a tree with children, or
+// anything open.
+func expands(n platform.AccessNode) bool {
+	switch n.Role {
+	case platform.RolePopUpButton, platform.RoleComboBox, platform.RoleDisclosure, platform.RoleMenuButton:
+		return true
+	}
+	return n.States&(platform.AccessExpanded|platform.AccessExpandable) != 0
+}
+
 // titled reports whether elements of a role show their name as a title.
 func titled(r platform.AccessRole) bool {
 	switch r {
@@ -206,6 +217,11 @@ func toggle(r platform.AccessRole) bool {
 	}
 	return false
 }
+
+// valueText reports whether a node of a range has a text for its value, as
+// aria-valuetext, which Core-AAM maps to AXValueDescription beside the
+// number.
+func valueText(n platform.AccessNode) bool { return n.Role.Ranged() && n.Value != "" }
 
 // valueOf returns the value of a node as AppKit wants it: a number for
 // toggles, disclosures and ranges, a string for texts.
@@ -268,8 +284,13 @@ func (el *accessElement) apply(n platform.AccessNode, fresh bool) (valueChanged 
 	if fresh || n.States&platform.AccessDisabled != o.States&platform.AccessDisabled {
 		send(obj, "setAccessibilityEnabled:", boolArg(n.States&platform.AccessDisabled == 0))
 	}
-	if fresh || n.States&platform.AccessExpanded != o.States&platform.AccessExpanded {
-		send(obj, "setAccessibilityExpanded:", boolArg(n.States&platform.AccessExpanded != 0))
+	// Only what opens says whether it is open, and what was open says it
+	// closed: AppKit reports AXExpanded once it is set, and VoiceOver
+	// then reads "collapsed" on lists and rows that never open.
+	if was := !fresh && expands(o); expands(n) || was {
+		if !was || n.States&platform.AccessExpanded != o.States&platform.AccessExpanded {
+			send(obj, "setAccessibilityExpanded:", boolArg(n.States&platform.AccessExpanded != 0))
+		}
 	}
 	if (n.Role == platform.RoleSlider || n.Role == platform.RoleSeparator) && (fresh || n.Role != o.Role || n.States&platform.AccessVertical != o.States&platform.AccessVertical) {
 		// NSAccessibilityOrientationVertical or Horizontal.
@@ -635,6 +656,14 @@ func registerAccessClass() {
 					names = send(names, "arrayByAddingObject:", uintptr(nsString(name)))
 				}
 			}
+			if valueText(el.node) {
+				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXValueDescription")))
+			}
+			// The keys that press or focus it, as WebKit's elements say
+			// aria-keyshortcuts.
+			if el.node.KeyShortcuts != "" {
+				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXKeyShortcutsValue")))
+			}
 			return names
 		}),
 		method("accessibilityAttributeValue:", func(self id, cmd objc.SEL, attr id) id {
@@ -666,6 +695,14 @@ func registerAccessClass() {
 							return nsBool(atomic)
 						}
 						return nsString("additions text") // ARIA's default
+					}
+				case "AXValueDescription":
+					if valueText(el.node) {
+						return nsString(el.node.Value)
+					}
+				case "AXKeyShortcutsValue":
+					if el.node.KeyShortcuts != "" {
+						return nsString(el.node.KeyShortcuts)
 					}
 				}
 			}
