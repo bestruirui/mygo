@@ -160,6 +160,42 @@ func TestLiveRegions(t *testing.T) {
 	check("the log again", nil, nil)
 }
 
+// TestRowHeaderKeepsChildren checks that a row header shows what is
+// inside it, as a cell does (ARIA's rowheader is not
+// children-presentational): a button in it stays reachable, while the
+// header is still named by its content.
+func TestRowHeaderKeepsChildren(t *testing.T) {
+	pressed := 0
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Role(RoleTable).Label("Prices").Children(func() {
+			coreRow(c).Role(RoleRow).Children(func() {
+				coreRow(c).Role(RoleRowHeader).Gap(4).Children(func() {
+					coreText(c, "Apples")
+					if coreButton(c, "Pin").Clicked() {
+						pressed++
+					}
+				})
+				coreText(c, "3").Role(RoleCell)
+			})
+		})
+	}, 400, 300)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	tree := tt.h.access
+	header := accessNode(t, tree, platform.RoleRowHeader, "Apples Pin")
+	pin := accessNode(t, tree, platform.RoleButton, "Pin")
+	if pin.Parent < 0 || tree.Nodes[pin.Parent].ID != header.ID {
+		t.Errorf("the button is not in the row header")
+	}
+	if pin.Actions&platform.ActionPress == 0 {
+		t.Errorf("the button can't be pressed: %+v", pin)
+	}
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessAction, ID: pin.ID, Action: platform.AccessPress})
+	tt.Frame()
+	if pressed != 1 {
+		t.Errorf("pressed %d times through assistive technology, want 1", pressed)
+	}
+}
+
 // TestTableRowHeaders checks that the cells of a Table's RowHeader column
 // are row headers, named by their text, and the others cells.
 func TestTableRowHeaders(t *testing.T) {

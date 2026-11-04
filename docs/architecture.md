@@ -2546,7 +2546,9 @@ either.
   "timer" and "alert"; `RoleSeparator` is `AXSplitter`, ATK's separator
   and UIA's Separator, vertical when taller than wide (`AccessVertical`,
   with `AXOrientation`, ATK's vertical state and UIA's Orientation);
-  `RoleRowHeader` is `AXCell`, ATK's row header and UIA's HeaderItem.
+  `RoleRowHeader` is `AXCell`, ATK's row header and UIA's HeaderItem,
+  named by its content but keeping what is inside it, as a cell does
+  (ARIA's rowheader is not children-presentational).
   Live regions (`AccessRole.Live`) say how they are read: `AXARIALive`,
   `AXARIAAtomic` and `AXARIARelevant`, answered as `AXInvalid` is; ATK's
   `live`, `atomic` and `relevant` attributes, with their `container-`

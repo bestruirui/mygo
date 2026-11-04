@@ -292,8 +292,8 @@ func (e *node) accessRole() (platform.AccessRole, bool) {
 func leafRole(r platform.AccessRole) bool {
 	switch r {
 	case platform.RoleGroup, platform.RoleList, platform.RoleScroll, platform.RoleDialog, platform.RoleAlertDialog, platform.RolePopup, platform.RoleStatus,
-		platform.RoleTabList, platform.RoleTable, platform.RoleRow, platform.RoleCell, platform.RoleTree, platform.RoleListItem,
-		platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleNavigation,
+		platform.RoleTabList, platform.RoleTable, platform.RoleRow, platform.RoleCell, platform.RoleRowHeader, platform.RoleTree,
+		platform.RoleListItem, platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleNavigation,
 		platform.RoleRegion, platform.RoleLog, platform.RoleTimer, platform.RoleAlert, platform.RoleSearch,
 		platform.RoleArticle:
 		return false
@@ -531,9 +531,12 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	if e.chooseMany {
 		n.States |= platform.AccessMultiselectable
 	}
-	// Rows and items of lists, and statuses, are named by their content,
-	// as leaves are, but show what is inside them too, as a toast's button.
-	if n.Label == "" && (leafRole(n.Role) || n.Role == platform.RoleListItem || n.Role == platform.RoleRow || n.Role == platform.RoleStatus) {
+	// Rows and items of lists, row headers and statuses, are named by
+	// their content, as leaves are, but show what is inside them too, as
+	// a toast's button or a row header's (ARIA's rowheader is not
+	// children-presentational).
+	if n.Label == "" && (leafRole(n.Role) || n.Role == platform.RoleListItem || n.Role == platform.RoleRow || n.Role == platform.RoleRowHeader ||
+		n.Role == platform.RoleStatus) {
 		n.Label = e.innerText()
 	}
 	if n.Label == "" && e.kind == kindText {

@@ -277,7 +277,7 @@ WAI-ARIA's Core Accessibility API Mappings say:
 | `ui.RoleTimer` | a count of time, as a countdown, read only when the user goes to it | `AXGroup`, `AXApplicationTimer` | timer | Group "timer" |
 | `ui.RoleAlert` | a live region of important news, as a field's error, read at once | `AXGroup`, `AXApplicationAlert` | notification | Group "alert", `LiveSetting` assertive |
 | `ui.RoleSeparator` | a rule between groups of content or controls, running up and down when taller than wide | `AXSplitter` | separator, vertical or horizontal | Separator, with `Orientation` |
-| `ui.RoleRowHeader` | the cell naming its row of a table, named by its content | `AXCell` | row header | HeaderItem "row header" |
+| `ui.RoleRowHeader` | the cell naming its row of a table, named by its content, whose buttons and other elements stay reachable, as a cell's | `AXCell` | row header | HeaderItem "row header" |
 
 Live regions say how they are read (`AXARIALive`, ATK's `live` and
 `container-live` attributes, `LiveSetting`), and MyGo reads them out as
