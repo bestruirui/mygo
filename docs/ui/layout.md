@@ -33,8 +33,10 @@ ui.Row(c).Gap(8).Padding(12).Children(func() {
 - `Width`, `Height` and `Size` set sizes; `WidthPercent` and `HeightPercent`
   take a share of the parent; `MinWidth`, `MaxWidth`, `MinHeight` and
   `MaxHeight` bound them, and their `Percent` forms by a share of the
-  parent; `Fill`, `FillWidth` and `FillHeight` take the parent's whole
-  content box. In a [grid](grid.md#sizing-children), a child's percentages
+  parent. An element with both takes the larger minimum and the smaller
+  maximum, as CSS's `max-width: min(78%, 34rem)` does a chat bubble's:
+  `MaxWidthPercent(78).MaxWidth(544)`. `Fill`, `FillWidth` and
+  `FillHeight` take the parent's whole content box. In a [grid](grid.md#sizing-children), a child's percentages
   are of its cell.
 - `Grow(1)` gives an element the free space along its parent's direction,
   like `flex: 1`: a list that fills the rest of a window, or a `Spacer` that
@@ -95,6 +97,9 @@ right and the left [right to left](right-to-left.md). On an element in the
 flow, `Top` and the others move
 it from where the layout put it, without moving its siblings, as CSS's
 relative positioning does: a badge raised a little above its text.
+`Sticky` makes them hold an element in the flow inside the scroll
+container around it instead, as CSS's `position: sticky` (see [Scroll
+view](scroll.md#sticky-elements)).
 
 ```go
 ui.Box(c).Size(40, 40).Children(func() {

@@ -221,7 +221,8 @@ func (e *node) ringMargin() float32 {
 // whose words paint over its paragraph (paintInline); effects and blurs,
 // which draw their content on a layer reaching beyond it; dividers, laid
 // across a container; the debug overlay, over margins; exit transitions'
-// copies; and color transitions, which note the frames they paint in.
+// copies; and color and shadow transitions, which note the frames they
+// paint in.
 func (e *node) setInk(vis Rect) {
 	m := e.shadowMargin() + e.ringMargin()
 	ink := [4]float32{vis.X - m, vis.Y - m, vis.X + vis.W + m, vis.Y + vis.H + m}
@@ -264,6 +265,9 @@ func (p *Painter) element(e *node) {
 	}
 	if r := e.st.trec; r != nil && r.built == p.rt.frame && r.elem == e {
 		p.rt.animateColors(e, r)
+		if animateShadows != nil {
+			animateShadows(p.rt, e, r)
+		}
 	}
 	if e.flags&flagInvisible != 0 || e.backface && e.transform.facesAway() {
 		return
@@ -287,7 +291,7 @@ func (p *Painter) element(e *node) {
 		return
 	}
 	saved := p.opacity
-	if e.flags&flagDisabled != 0 {
+	if e.flags&flagDisabled != 0 && !e.undimmed {
 		p.opacity *= 0.5
 	}
 	if e.opacitySet {
@@ -392,7 +396,7 @@ func (p *Painter) element(e *node) {
 		m := p.rt.matches
 		layers := m != nil && e == e.c.overlay
 		for c := e.first; c != nil; c = c.next {
-			if c.flags&flagAbsolute == 0 && p.paintable(c) {
+			if c.flags&flagAbsolute == 0 && !c.sticky && p.paintable(c) {
 				p.element(c)
 				if layers {
 					m.paint(p, c)
@@ -408,7 +412,9 @@ func (p *Painter) element(e *node) {
 				m.paint(p, nil)
 				content = false
 			}
-			if c.flags&flagAbsolute != 0 && c.leaving == 0 && p.paintable(c) {
+			// Sticky children paint above the flow too, in their order
+			// among the absolute ones, as CSS's positioned elements do.
+			if (c.flags&flagAbsolute != 0 && c.leaving == 0 || c.flags&flagAbsolute == 0 && c.sticky) && p.paintable(c) {
 				p.element(c)
 				if layers {
 					m.paint(p, c)

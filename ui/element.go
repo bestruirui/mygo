@@ -59,6 +59,55 @@ func isAuto(v float32) bool { return math.IsInf(float64(v), 1) }
 func px(v float32) length      { return length{v, unitPx} }
 func percent(v float32) length { return length{v, unitPercent} }
 
+// bound is a minimum or a maximum size, in DIPs, by a percentage of the
+// parent's, or by both, as CSS's max-width: min(78%, 34rem): the larger
+// of two minimums applies, and the smaller of two maximums.
+type bound struct {
+	px, pct float32
+	set     uint8 // boundPx, boundPct
+}
+
+const (
+	boundPx uint8 = 1 << iota
+	boundPct
+)
+
+func (b *bound) setPx(v float32)  { b.px, b.set = v, b.set|boundPx }
+func (b *bound) setPct(p float32) { b.pct, b.set = p, b.set|boundPct }
+
+// lower and upper return a minimum and a maximum in DIPs against base,
+// and false when none applies: a percentage applies only against a known
+// base, not -1. Most elements have none, which they find inline.
+func (b bound) lower(base float32) (float32, bool) {
+	if b.set == 0 {
+		return 0, false
+	}
+	return b.resolve(base, true)
+}
+
+func (b bound) upper(base float32) (float32, bool) {
+	if b.set == 0 {
+		return 0, false
+	}
+	return b.resolve(base, false)
+}
+
+func (b bound) resolve(base float32, larger bool) (float32, bool) {
+	v, ok := b.px, b.set&boundPx != 0
+	if b.set&boundPct != 0 && base >= 0 {
+		p := b.pct / 100 * base
+		switch {
+		case !ok:
+			v, ok = p, true
+		case larger:
+			v = max(v, p)
+		default:
+			v = min(v, p)
+		}
+	}
+	return v, ok
+}
+
 // resolve returns the length in DIPs against base, and false for auto or a
 // percentage of an unknown base.
 func (l length) resolve(base float32) (float32, bool) {
@@ -230,7 +279,7 @@ type layoutStyle struct {
 	border                 [4]float32 // top, right, bottom, left
 	margin                 [4]float32 // Auto for auto margins
 	width, height          length
-	minW, minH, maxW, maxH length
+	minW, minH, maxW, maxH bound
 	grow, shrink           float32
 	basis                  length
 	inset                  [4]length
@@ -239,6 +288,9 @@ type layoutStyle struct {
 	justifyItems           Align // of a grid
 	cell                   gridCell
 	justifySelf            Align
+	// sticky holds the element in its scroll container by its insets
+	// (Sticky), which then do not move it as relative positioning does.
+	sticky bool
 	// baselines is set on the row of a field in a form, which lines up
 	// the first lines of its label and control.
 	baselines bool
@@ -288,7 +340,11 @@ type node struct {
 	translatePct     [2]float32 // TranslatePercent's
 	originX, originY float32
 	originSet        bool
-	world            scene.Affine
+	// originAttached puts the origin on the element's point on its target
+	// as its layout attaches it (AttachedOrigin).
+	originAttached bool
+
+	world scene.Affine
 	// content is how its content changes (ContentTransition), when set.
 	content    ContentTransition
 	contentSet bool
@@ -349,6 +405,7 @@ type node struct {
 	blur       float32
 	opacity    float32
 	opacitySet bool
+	undimmed   bool // kept at its opacity while disabled (DimDisabled)
 	cursor     Cursor
 	paintFn    func(p *Painter, r Rect)
 	// objectFn draws the inline objects of a text (DrawObjects).
@@ -462,6 +519,12 @@ type node struct {
 	barsFrom       *node
 	rowIndex       int
 	rowsOf         *listFrame
+	// snap is how the element, a scroll container, snaps (ScrollSnap), and
+	// snapAlign how the element lines up with the container around it
+	// that does (SnapAlign): Start, Center or End plus one, horizontally
+	// in its low four bits and vertically in its high four, 0 for none.
+	snap      Snap
+	snapAlign uint8
 	// focusGroup makes the element a focus group (FocusGroup), whose
 	// arrows click the element they move to with groupSelects.
 	focusGroup   Orientation
@@ -532,11 +595,15 @@ type node struct {
 	// animates (1 if it was in its parent's flow, 2 if absolute), and
 	// ghosts an element holding such copies; lift one flying with a
 	// Match, which paints over the rest of its layer (matches.lifted).
-	// attach is where Attach puts the element, 0 for nowhere.
+	// attach is where Attach puts the element, 0 for nowhere, and placed
+	// where AttachTo put it as this frame laid it out, on whichever side
+	// of its target, flips the sides it went to (flipAcross, flipDown).
 	leaving uint8
 	ghosts  bool
 	lift    bool
 	attach  attachment
+	placed  attachment
+	flips   uint8
 	// serial is the order the pass made the element in: of overlays, the
 	// one made last shows on top.
 	serial int32
@@ -900,17 +967,21 @@ func (e *node) FillHeight() *node { e.height = percent(100); return e }
 func (e *node) Fill() *node { e.width, e.height = percent(100), percent(100); return e }
 
 // MinWidth, MinHeight, MaxWidth and MaxHeight bound the size in DIPs.
-func (e *node) MinWidth(v float32) *node  { e.minW = px(v); return e }
-func (e *node) MinHeight(v float32) *node { e.minH = px(v); return e }
-func (e *node) MaxWidth(v float32) *node  { e.maxW = px(v); return e }
-func (e *node) MaxHeight(v float32) *node { e.maxH = px(v); return e }
+func (e *node) MinWidth(v float32) *node  { e.minW.setPx(v); return e }
+func (e *node) MinHeight(v float32) *node { e.minH.setPx(v); return e }
+func (e *node) MaxWidth(v float32) *node  { e.maxW.setPx(v); return e }
+func (e *node) MaxHeight(v float32) *node { e.maxH.setPx(v); return e }
 
 // MinWidthPercent, MinHeightPercent, MaxWidthPercent and MaxHeightPercent
-// bound the size by a percentage of the parent's.
-func (e *node) MinWidthPercent(p float32) *node  { e.minW = percent(p); return e }
-func (e *node) MinHeightPercent(p float32) *node { e.minH = percent(p); return e }
-func (e *node) MaxWidthPercent(p float32) *node  { e.maxW = percent(p); return e }
-func (e *node) MaxHeightPercent(p float32) *node { e.maxH = percent(p); return e }
+// bound the size by a percentage of the parent's. With a bound in DIPs
+// too, both apply: the larger minimum and the smaller maximum, as CSS's
+// max-width: min(78%, 34rem) for a chat bubble:
+//
+//	ui.Box(c).MaxWidthPercent(78).MaxWidth(544)
+func (e *node) MinWidthPercent(p float32) *node  { e.minW.setPct(p); return e }
+func (e *node) MinHeightPercent(p float32) *node { e.minH.setPct(p); return e }
+func (e *node) MaxWidthPercent(p float32) *node  { e.maxW.setPct(p); return e }
+func (e *node) MaxHeightPercent(p float32) *node { e.maxH.setPct(p); return e }
 
 // Grow gives the element a share f of the free space along its parent's
 // main axis: Grow(1) on one child makes it take all of it. Like CSS flex:
@@ -1027,6 +1098,41 @@ type attachment uint8
 
 func (a attachment) anchors() (at, self Anchor) { return Anchor((a - 1) / 15), Anchor((a - 1) % 15) }
 
+// flipped returns a with its anchors on the other side across (x) and
+// down (y) their boxes.
+func (a attachment) flipped(x, y bool) attachment {
+	at, self := a.anchors()
+	if x {
+		at, self = at.acrossFlipped(), self.acrossFlipped()
+	}
+	if y {
+		at, self = at.downFlipped(), self.downFlipped()
+	}
+	return attachment(1 + at*15 + self)
+}
+
+// acrossFlipped returns the anchor on the other side across a box: the
+// right for the left, the end for the start.
+func (a Anchor) acrossFlipped() Anchor {
+	switch {
+	case a < AnchorTopStart:
+		return a/3*3 + 2 - a%3
+	case a < AnchorTopEnd:
+		return a + 3
+	}
+	return a - 3
+}
+
+// downFlipped returns the anchor on the other side down a box: the bottom
+// for the top.
+func (a Anchor) downFlipped() Anchor {
+	if a < AnchorTopStart {
+		return (2-a/3)*3 + a%3
+	}
+	base := AnchorTopStart + (a-AnchorTopStart)/3*3
+	return base + 2 - (a - base)
+}
+
 // Attach takes the element out of its parent's layout, as Absolute does,
 // and puts its point self on the point at of the parent's padding box:
 // Attach(ui.AnchorTopRight, ui.AnchorCenter) centers a badge on the top
@@ -1053,7 +1159,8 @@ func (e *node) Attach(at, self Anchor) *node {
 //
 // The element is target's popover: its elements follow target as Tab
 // moves, and a press on target is not outside it (PressedOutside). Build
-// target before it, in the same frame.
+// target before it, in the same frame. AttachedAnchors tells the side it
+// went to.
 func (e *node) AttachTo(target *node, at, self Anchor) *node {
 	if target == nil {
 		return e
@@ -1065,6 +1172,45 @@ func (e *node) AttachTo(target *node, at, self Anchor) *node {
 		// Built in an Overlay, it reads as what it is attached to.
 		e.setDir(target.rtl(), false)
 	}
+	return e
+}
+
+// AttachedAnchors returns the points of its target's box and of its own
+// that AttachTo put together as the layout placed the element: those
+// asked for, or, where it went to the other side of target or the other
+// way along it to stay in the window, those across or down from them, as
+// Floating UI's placement: AnchorTop and AnchorBottom for a panel asked
+// below its button, with AttachTo(button, ui.AnchorBottom, ui.AnchorTop),
+// that went above it. Start and end anchors stay start and end ones. The
+// view reads the last frame's, which are those asked for until the
+// element is laid out, as in the frame it first shows; Draw reads this
+// frame's. From that first frame, AttachedOrigin puts the element's
+// transform origin on its own point, and a Motion's Flip mirrors its
+// Enter and Exit, on the side the layout chose. An element not attached
+// to another returns its Attach anchors, or AnchorTopLeft twice without
+// them.
+func (e *node) AttachedAnchors() (at, self Anchor) {
+	a := e.placed
+	if a == 0 && e.attach != 0 && e.hasState() && e.st.asked == e.attach {
+		a = e.st.placed
+	}
+	if a == 0 {
+		a = e.attach
+	}
+	if a == 0 {
+		return AnchorTopLeft, AnchorTopLeft
+	}
+	return a.anchors()
+}
+
+// AttachedOrigin sets the transform origin on the element's own point
+// that AttachTo puts on its target, on whichever side of it the layout
+// puts the element (AttachedAnchors), from the frame it shows: a tooltip
+// or a menu scaling in, or out, grows from the edge nearest its trigger,
+// as Radix's popper transform origin. It replaces TransformOrigin on an
+// element attached to another.
+func (e *node) AttachedOrigin() *node {
+	e.originAttached = true
 	return e
 }
 
@@ -1535,7 +1681,8 @@ func (e *node) Ellipsis(s string) *node { e.ellipsis = s; return e }
 func (e *node) Label(s string) *node { e.label = s; return e }
 
 // Disabled disables the element and those inside it when d is true: they
-// report no clicks, take no focus, and widgets look disabled.
+// report no clicks, take no focus, and show at half their opacity, unless
+// DimDisabled turns that off.
 func (e *node) Disabled(d bool) *node {
 	if d {
 		e.flags |= flagDisabled
@@ -1544,6 +1691,14 @@ func (e *node) Disabled(d bool) *node {
 	}
 	return e
 }
+
+// DimDisabled sets whether the element shows at half its opacity, with
+// what is inside it, while Disabled disables it, as it does by default,
+// bases too; an element disabled by one around it dims with that one. A
+// widget of your own that shows being disabled in a look of its own, as
+// a card that keeps the reason it is unavailable readable, turns it off
+// and styles itself while IsDisabled.
+func (e *node) DimDisabled(dim bool) *node { e.undimmed = !dim; return e }
 
 // IsDisabled reports whether the element or an ancestor is disabled.
 func (e *node) IsDisabled() bool {

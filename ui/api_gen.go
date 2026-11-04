@@ -352,6 +352,28 @@ func (_handle *Context) DisableAnimations() {
 	_ctx.DisableAnimations()
 }
 
+// FocusTakesText reports whether the element with the keyboard focus takes
+// text, typed or composed: a text input or text area, or an editor of
+// rich text or code, that is not read only, or an element that takes text
+// itself (HandleTextInput, TextCaret). It is the web's guard of
+// single-key shortcuts (isContentEditable, an input or a textarea, the
+// role textbox): a command palette's letters step aside while a field
+// takes them as text.
+//
+//	if !c.FocusTakesText() && c.Shortcut(0, ui.KeyK) {
+//		app.palette = true
+//	}
+//
+// It is false while the window does not have the keyboard, as the
+// window tells the system's input methods then.
+func (_handle *Context) FocusTakesText() bool {
+	_ctx := _handle.build()
+	if _ctx == nil {
+		return false
+	}
+	return _ctx.FocusTakesText()
+}
+
 // Instant reports whether this frame shows animated values at once
 // (DisableAnimations). Views read it to render a change settled in the same
 // frames where its animations are disabled.
@@ -534,6 +556,26 @@ func (_handle *Context) Shortcut(mods Modifiers, key Key) bool {
 	}
 	_ctx.rt.applyInputs()
 	return _ctx.Shortcut(mods, key)
+}
+
+// ShortcutRepeated reports whether the key that the last Shortcut to
+// report one took came as the auto-repeat of a key held down, as the web's
+// KeyboardEvent.repeat: Context's, an Element's, a list's or an overlay's,
+// and those that run OnShortcut's actions, which can ask it as they run.
+// An action that steps while the key is held takes every key; a toggle
+// takes the press alone, and lets the repeats go by:
+//
+//	if c.Shortcut(0, ui.KeyT) && !c.ShortcutRepeated() {
+//		app.panel = !app.panel
+//	}
+//
+// It is false in a frame no shortcut took a key in yet.
+func (_handle *Context) ShortcutRepeated() bool {
+	_ctx := _handle.build()
+	if _ctx == nil {
+		return false
+	}
+	return _ctx.ShortcutRepeated()
 }
 
 // Size returns the size of the window's content in DIPs.
@@ -1526,7 +1568,7 @@ func Local[T any](e Element, key any, init func() T) *T {
 
 // MenuBase creates a menu button without a look, whose menu shows while
 // *open is true: a button that takes the focus and opens the menu as the
-// pointer goes down on it, or for Enter, Space or Down while it has the
+// pointer goes down on it, or for Enter, Space, Up or Down while it has the
 // focus, and closes it when pressed again. Give the trigger children, and
 // build the menu in Popup with Item, CheckItem, RadioItem and
 // SubmenuItem, and the submenus with Submenu; an item's Clicked reports
@@ -2080,6 +2122,24 @@ func SelectBase[T comparable](c *Context, selected *T) SelectParts[T] {
 	}
 	_ctx.rt.beginBuild()
 	_p := coreSelectBase[T](_ctx, selected)
+	_ctx.rt.endBuild()
+	return wrapSelectParts[T](_p)
+}
+
+// SelectBaseOpen is SelectBase whose popup shows while *open, a flag the
+// caller owns, as PopoverBase's: the select sets it as it opens and
+// closes, and the caller may set it too, as typing on the closed trigger
+// opens the popup, or Tab moving on closes it. The highlight starts on the
+// choice each time the popup opens. Owning the flag, the caller can keep
+// the popup a little longer as it closes, to shrink it back into the
+// trigger.
+func SelectBaseOpen[T comparable](c *Context, selected *T, open *bool) SelectParts[T] {
+	_ctx := c.build()
+	if _ctx == nil {
+		return SelectParts[T]{}
+	}
+	_ctx.rt.beginBuild()
+	_p := coreSelectBaseOpen[T](_ctx, selected, open)
 	_ctx.rt.endBuild()
 	return wrapSelectParts[T](_p)
 }
@@ -3369,7 +3429,8 @@ func (_handle Element) Attach(at Anchor, self Anchor) Element {
 //
 // The element is target's popover: its elements follow target as Tab
 // moves, and a press on target is not outside it (PressedOutside). Build
-// target before it, in the same frame.
+// target before it, in the same frame. AttachedAnchors tells the side it
+// went to.
 func (_handle Element) AttachTo(target Element, at Anchor, self Anchor) Element {
 	_node := _handle.node()
 	if _node == nil {
@@ -3378,6 +3439,46 @@ func (_handle Element) AttachTo(target Element, at Anchor, self Anchor) Element 
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.AttachTo(target.nodeFor(_ctx.rt), at, self))
+}
+
+// AttachedAnchors returns the points of its target's box and of its own
+// that AttachTo put together as the layout placed the element: those
+// asked for, or, where it went to the other side of target or the other
+// way along it to stay in the window, those across or down from them, as
+// Floating UI's placement: AnchorTop and AnchorBottom for a panel asked
+// below its button, with AttachTo(button, ui.AnchorBottom, ui.AnchorTop),
+// that went above it. Start and end anchors stay start and end ones. The
+// view reads the last frame's, which are those asked for until the
+// element is laid out, as in the frame it first shows; Draw reads this
+// frame's. From that first frame, AttachedOrigin puts the element's
+// transform origin on its own point, and a Motion's Flip mirrors its
+// Enter and Exit, on the side the layout chose. An element not attached
+// to another returns its Attach anchors, or AnchorTopLeft twice without
+// them.
+func (_handle Element) AttachedAnchors() (Anchor, Anchor) {
+	_node := _handle.node()
+	if _node == nil {
+		return *new(Anchor), *new(Anchor)
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return _node.AttachedAnchors()
+}
+
+// AttachedOrigin sets the transform origin on the element's own point
+// that AttachTo puts on its target, on whichever side of it the layout
+// puts the element (AttachedAnchors), from the frame it shows: a tooltip
+// or a menu scaling in, or out, grows from the edge nearest its trigger,
+// as Radix's popper transform origin. It replaces TransformOrigin on an
+// element attached to another.
+func (_handle Element) AttachedOrigin() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.AttachedOrigin())
 }
 
 // AutoFocus gives the element the keyboard focus in the frame it appears,
@@ -4115,6 +4216,22 @@ func (_handle Element) Description(s string) Element {
 	return wrapElement(_node.Description(s))
 }
 
+// DimDisabled sets whether the element shows at half its opacity, with
+// what is inside it, while Disabled disables it, as it does by default,
+// bases too; an element disabled by one around it dims with that one. A
+// widget of your own that shows being disabled in a look of its own, as
+// a card that keeps the reason it is unavailable readable, turns it off
+// and styles itself while IsDisabled.
+func (_handle Element) DimDisabled(dim bool) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.DimDisabled(dim))
+}
+
 // Direction lays the element and what is inside it out in d, whatever the
 // direction around it: Direction(ui.LeftToRight) keeps a code sample, a
 // phone number or a media player's controls left to right in a
@@ -4137,7 +4254,8 @@ func (_handle Element) Direction(d Direction) Element {
 }
 
 // Disabled disables the element and those inside it when d is true: they
-// report no clicks, take no focus, and widgets look disabled.
+// report no clicks, take no focus, and show at half their opacity, unless
+// DimDisabled turns that off.
 func (_handle Element) Disabled(d bool) Element {
 	_node := _handle.node()
 	if _node == nil {
@@ -4600,6 +4718,33 @@ func (_handle Element) FocusGroup(o Orientation) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.FocusGroup(o))
+}
+
+// FocusLeft reports whether the keyboard focus left the element since the
+// last frame: it was on the element or inside it, and is now outside it,
+// or nowhere, as the window lost the keyboard. That is the web's focusout
+// whose relatedTarget the element does not contain. The overlays attached
+// to the element and to those inside it (AttachTo), as a combobox's list
+// or a button's popover, count as inside it, as does the element it is
+// attached to, as PressedOutside has them: a combobox closes as the focus
+// leaves its field, but not as it moves into its list.
+//
+//	field := ui.TextInput(c, &app.query)
+//	if field.FocusLeft() {
+//		app.open = false
+//	}
+//
+// Where the focus went is what the elements tell as they are built
+// (Focused, FocusWithin), and a Handle's FocusWithin before its control
+// is.
+func (_handle Element) FocusLeft() bool {
+	_node := _handle.node()
+	if _node == nil {
+		return false
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return _node.FocusLeft()
 }
 
 // FocusRing sets whether MyGo rings the element when it has the keyboard
@@ -5573,7 +5718,11 @@ func (_handle Element) MinWidth(v float32) Element {
 }
 
 // MinWidthPercent, MinHeightPercent, MaxWidthPercent and MaxHeightPercent
-// bound the size by a percentage of the parent's.
+// bound the size by a percentage of the parent's. With a bound in DIPs
+// too, both apply: the larger minimum and the smaller maximum, as CSS's
+// max-width: min(78%, 34rem) for a chat bubble:
+//
+//	ui.Box(c).MaxWidthPercent(78).MaxWidth(544)
 func (_handle Element) MinWidthPercent(p float32) Element {
 	_node := _handle.node()
 	if _node == nil {
@@ -5896,7 +6045,7 @@ func (_handle Element) PopoverMenu(build func(m *Menu)) Element {
 // menu MyGo draws in the window with the theme's look, as PopoverMenu
 // draws a context menu, rather than the system showing one of its own. It
 // opens below the element, or above it where the window has no room, as
-// the pointer goes down on it, and for Enter, Space or Down while it has
+// the pointer goes down on it, and for Enter, Space, Up or Down while it has
 // the focus, which it takes. build fills it with the items Menu's
 // function takes, and the item chosen reports Chosen as there:
 //
@@ -6262,6 +6411,41 @@ func (_handle Element) ScrollIntoView() Element {
 	return wrapElement(_node.ScrollIntoView())
 }
 
+// ScrollSnap makes the scroll container (Scroll, ScrollHorizontal,
+// ScrollBoth, List) come to rest at the places the elements in it mark
+// with SnapAlign, as CSS's scroll-snap-type does, on the axes it scrolls:
+//
+//   - a touchpad, its momentum after a fling, and a finger on a
+//     touchscreen glide on to the nearest once they have settled, and so
+//     does a thumb of a scroll bar once it is let go;
+//   - a notch of a wheel, the arrow keys, Page Up and Page Down, Home and
+//     End and a press on a scroll bar's track go to the next place that
+//     way, past where it was, as far as they scroll.
+//
+// A place lines an element up with the container's content box, inside
+// its padding, so that the first of a strip of cards rests where it
+// starts. An element larger than the view rests anywhere it fills the
+// view. Resting at an element, the container stays at it as the layout
+// moves it, as when the window resizes, and an element of one coming into
+// view (ScrollIntoView, the focus) lines it up. Where the app scrolls the
+// container, with its ScrollState, ScrollTo or a List's ListState, it
+// stays. While the desktop asks for less motion, it rests at once.
+//
+//	ui.ScrollHorizontal(c).ScrollSnap(ui.SnapMandatory).Padding(16).Gap(12).Children(func() {
+//		for _, card := range app.cards {
+//			cardView(c, card).SnapAlign(ui.Start)
+//		}
+//	})
+func (_handle Element) ScrollSnap(s Snap) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.ScrollSnap(s))
+}
+
 // ScrollWith moves the element's content sideways as far as scroller, a
 // scroll container, scrolls its own, as a table's header goes with its
 // rows. Clip the element, so that what goes out of it does not show.
@@ -6483,6 +6667,45 @@ func (_handle Element) Skew(x float32, y float32) Element {
 	return wrapElement(_node.Skew(x, y))
 }
 
+// SnapAlign marks a place where the nearest scroll container around the
+// element rests, if it snaps (ScrollSnap): where the element's start,
+// center or end, as a is Start, Center or End, lines up with the
+// container's, on both axes, as CSS's scroll-snap-align. Start is the left
+// of what scrolls sideways, its right right to left (Direction), and the
+// top of what scrolls vertically.
+func (_handle Element) SnapAlign(a Align) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.SnapAlign(a))
+}
+
+// SnapAlignX marks a place as SnapAlign does, sideways only: a container
+// that scrolls both ways rests anywhere vertically.
+func (_handle Element) SnapAlignX(a Align) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.SnapAlignX(a))
+}
+
+// SnapAlignY marks a place as SnapAlign does, vertically only.
+func (_handle Element) SnapAlignY(a Align) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.SnapAlignY(a))
+}
+
 // Spring returns a value following target with a spring, as AnimateTo
 // does with Animation{Spring: options}: Smooth's spring without options.
 func (_handle Element) Spring(key any, target float32, options ...SpringOptions) float32 {
@@ -6533,6 +6756,48 @@ func (_handle Element) Step(step float64) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.Step(step))
+}
+
+// Sticky keeps the element in its parent's flow, where it takes its room,
+// and holds it inside the scroll container around it while its parent is
+// in view, as CSS's position: sticky does: Top, Right, Bottom and Left (or
+// Start and End, and their percentages of the container's size) say how far
+// in from the container's edges, inside its border, it stays. It moves no
+// further than its parent's content box, so the parent leaving the view
+// takes it along, and the next one's comes up in its place: a day's heading
+// at the top of a timeline until the next day pushes it out, or the check
+// box choosing all the rows at the left of a table scrolling sideways.
+//
+//	ui.Scroll(c).Fill().Children(func() {
+//		for _, day := range app.days {
+//			ui.Column(c).Children(func() {
+//				ui.Text(c, day.Title).Bold().Background(t.Surface).Sticky().Top(0)
+//				for _, ev := range day.Events {
+//					eventRow(c, ev)
+//				}
+//			})
+//		}
+//	})
+//
+// Each axis follows the nearest container scrolling that way, or one
+// following another sideways (ScrollWith), or else the window: a heading
+// in a table scrolling sideways in a page scrolling down sticks to the
+// page's top and to the table's start. Where both insets of an axis are
+// set and the container is too small for both, Top wins, and Left, or
+// Right right to left. Without insets, the element stays where the flow
+// puts it. It paints above its siblings, as Absolute elements do, and the
+// pointer, assistive technology and the focus ring find it where it shows;
+// the focus and assistive technology still take it in its place among
+// them. Sticky does nothing to an Absolute element, nor to one inside a
+// text.
+func (_handle Element) Sticky() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.Sticky())
 }
 
 // Strikethrough strikes text through.
@@ -7024,7 +7289,9 @@ func (_handle SegmentedParts) Segment(i int) Element {
 
 // Highlight moves the highlight to the option of value while the popup
 // shows, unless it is disabled, as a select of your own may do as the
-// user types the option's first letters; Enter then chooses it.
+// user types the option's first letters; Enter then chooses it. Called
+// before Popup as the popup opens, it highlights the option once Popup
+// builds it.
 func (_handle SelectParts[T]) Highlight(value T) {
 	_parts := _handle.resolve()
 	if _parts == nil {
@@ -7082,6 +7349,19 @@ func (_handle SelectParts[T]) Popup(fn func(panel Element)) Element {
 	_e := _parts.Popup(func(panel *node) { fn(wrapElement(panel)) })
 	_ctx.rt.endBuild()
 	return wrapElement(_e)
+}
+
+// SetOpen opens or closes the popup, as typing on the closed trigger may
+// open it, or Tab moving on close it. It opens with the highlight on the
+// choice, which Highlight then moves.
+func (_handle SelectParts[T]) SetOpen(o bool) {
+	_parts := _handle.resolve()
+	if _parts == nil {
+		return
+	}
+	_ctx := _parts.c
+	_ = _ctx
+	_parts.SetOpen(o)
 }
 
 // Tab creates tab i of the list: a row that takes the focus and chooses
