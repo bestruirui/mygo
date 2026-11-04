@@ -48,6 +48,10 @@ type accessElement struct {
 	// unknown.
 	cellRow bool
 	at      [2]int
+	// headers are the column headers of a table, and header that of a
+	// cell's column (AXColumnHeaderUIElements).
+	headers []uint64
+	header  uint64
 }
 
 var (
@@ -172,6 +176,10 @@ func chooses(n platform.AccessNode) bool {
 	return (n.Role == platform.RoleListItem || n.Role == platform.RoleRow || n.Role == platform.RoleTreeItem || cell(n.Role)) && n.States&platform.AccessSelectable != 0
 }
 
+// sortStates are the orders a column's header says its table's rows are
+// sorted in.
+const sortStates = platform.AccessSortAscending | platform.AccessSortDescending | platform.AccessSortOther
+
 // showsMenu reports whether a node opens a popup as it is pressed, which
 // AXShowMenu does, as WebKit's elements with aria-haspopup.
 func showsMenu(n platform.AccessNode) bool {
@@ -186,9 +194,9 @@ func cell(r platform.AccessRole) bool {
 
 // placeCells tells the cells of a table's row where they are, the row
 // from 1 or 0 for its header, as NSTableView's cells say
-// (AXRowIndexRange, AXColumnIndexRange), and reports whether one of
-// them is chosen.
-func (s *surface) placeCells(row *accessElement, index int) (chosen bool) {
+// (AXRowIndexRange, AXColumnIndexRange), and the header of their column
+// among headers, and reports whether one of them is chosen.
+func (s *surface) placeCells(row *accessElement, index int, headers []uint64) (chosen bool) {
 	col := 0
 	for _, cid := range row.children {
 		c := s.elements[cid]
@@ -196,6 +204,10 @@ func (s *surface) placeCells(row *accessElement, index int) (chosen bool) {
 			continue
 		}
 		col++
+		c.header = 0
+		if col <= len(headers) && c.node.Role != platform.RoleColumnHeader {
+			c.header = headers[col-1]
+		}
 		if at := [2]int{index, col}; c.at != at {
 			if index > 0 && c.at[0] != index {
 				send(c.obj, "setAccessibilityRowIndexRange:", uintptr(index-1), 1)
@@ -215,6 +227,11 @@ func roleOf(n platform.AccessNode) (role, subrole string) {
 	role, subrole = r[0], r[1]
 	if n.States&platform.AccessSegment != 0 {
 		subrole = "AXSegment" // as NSSegmentedControl's
+	}
+	// The header of a column that sorts the rows, as NSTableHeaderView's
+	// are: VoiceOver reads its sort direction.
+	if n.Role == platform.RoleColumnHeader && (n.States&sortStates != 0 || n.Actions&platform.ActionPress != 0) {
+		role, subrole = "AXButton", "AXSortButton"
 	}
 	if n.Role == platform.RoleTextField {
 		switch {
@@ -378,7 +395,7 @@ func (el *accessElement) apply(n platform.AccessNode, fresh bool) (valueChanged 
 		}
 		send(obj, "setAccessibilityPlaceholderValue:", uintptr(p))
 	}
-	if sorted := platform.AccessSortAscending | platform.AccessSortDescending | platform.AccessSortOther; (n.Role == platform.RoleColumnHeader || n.Role == platform.RoleRowHeader) && (fresh || n.States&sorted != o.States&sorted) {
+	if (n.Role == platform.RoleColumnHeader || n.Role == platform.RoleRowHeader) && (fresh || n.States&sortStates != o.States&sortStates) {
 		// NSAccessibilitySortDirection, Unknown for another order.
 		dir := 0
 		switch {
@@ -431,6 +448,16 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 		var valueChanged, busyChanged []id
 		fresh := map[uint64]bool{}
 		for i, n := range tree.Nodes {
+			// VoiceOver reads no chosen state of a cell (AXSelected), nor
+			// its change: a chosen cell says it after its name, as
+			// VoiceOver's own "selected" follows a row's.
+			if tree.Selected != "" && cell(n.Role) && chooses(n) && n.States&platform.AccessChecked != 0 {
+				if n.Label == "" {
+					n.Label = tree.Selected
+				} else {
+					n.Label += ", " + tree.Selected
+				}
+			}
 			el := s.elements[n.ID]
 			if el == nil {
 				fresh[n.ID] = true
@@ -497,11 +524,26 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 		// how many they have, built or not. A list's own rows say where
 		// they are among all; the rows of other tables, where among those.
 		var selectionChanged, cellsChanged []*accessElement
+		var chosenNews []string
 		for i, n := range tree.Nodes {
 			if n.Role != platform.RoleList && n.Role != platform.RoleTable && n.Role != platform.RoleTree {
 				continue
 			}
 			el := s.elements[n.ID]
+			// The column headers, in the first row that has them, which
+			// VoiceOver reads with the cells of their columns.
+			var headers []uint64
+			for _, rid := range children[i] {
+				for _, cid := range s.elements[rid].children {
+					if s.elements[cid].node.Role == platform.RoleColumnHeader {
+						headers = append(headers, cid)
+					}
+				}
+				if headers != nil {
+					break
+				}
+			}
+			el.headers = headers
 			var rows, shown, chosen []id
 			var chosenIDs []uint64
 			for _, cid := range children[i] {
@@ -509,7 +551,7 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 				header := n.SetSize > 0 && c.node.PosInSet == 0
 				if r := c.node.Role; r != platform.RoleRow && r != platform.RoleListItem && r != platform.RoleTreeItem || header {
 					if r == platform.RoleRow {
-						s.placeCells(c, 0)
+						s.placeCells(c, 0, nil)
 					}
 					continue // a table's header
 				}
@@ -524,8 +566,8 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 				}
 				// A row holding a chosen cell is chosen, as NSTableView
 				// tells the cells chosen by their rows: VoiceOver reads a
-				// table's choice, and a cell's, by them.
-				byCells := c.node.Role == platform.RoleRow && s.placeCells(c, index+1) && !chooses(c.node)
+				// table's choice by them.
+				byCells := c.node.Role == platform.RoleRow && s.placeCells(c, index+1, headers) && !chooses(c.node)
 				if byCells != c.cellRow {
 					c.cellRow = byCells
 					send(c.obj, "setAccessibilitySelected:", boolArg(byCells || chooses(c.node) && c.node.States&platform.AccessChecked != 0))
@@ -563,11 +605,28 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 				}
 			}
 			if !slices.Equal(el.chosenCells, cellIDs) {
-				el.chosenCells = cellIDs
-				send(el.obj, "setAccessibilitySelectedCells:", uintptr(nsArray(cells...)))
 				if !fresh[n.ID] {
 					cellsChanged = append(cellsChanged, el)
+					// The cells whose choice changed tell it too, as
+					// WebKit's gridcells do; VoiceOver reads it of
+					// neither, so a cell chosen, not new, where the focus
+					// is not is read out, as the focus would read it.
+					for _, cid := range cellIDs {
+						if !slices.Contains(el.chosenCells, cid) {
+							cellsChanged = append(cellsChanged, s.elements[cid])
+							if cid != tree.Focus && !fresh[cid] && tree.Selected != "" {
+								chosenNews = append(chosenNews, s.elements[cid].node.Label)
+							}
+						}
+					}
+					for _, cid := range el.chosenCells {
+						if c := s.elements[cid]; c != nil && !slices.Contains(cellIDs, cid) {
+							cellsChanged = append(cellsChanged, c)
+						}
+					}
 				}
+				el.chosenCells = cellIDs
+				send(el.obj, "setAccessibilitySelectedCells:", uintptr(nsArray(cells...)))
 			}
 		}
 		release(s.topLevel)
@@ -622,7 +681,7 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 				postNote(el.obj, "AXFocusedUIElementChanged")
 			}
 		}
-		for _, text := range tree.Announcements {
+		for _, text := range slices.Concat(chosenNews, tree.Announcements) {
 			announce(s.w.b.app, text, false)
 		}
 		for _, text := range tree.Alerts {
@@ -757,14 +816,23 @@ func registerAccessClass() {
 			// table has chosen, which AppKit's names of an AXCell and an
 			// AXTable leave out though their setters are called.
 			var more []string
-			switch {
-			case cell(el.node.Role):
+			switch r := el.node.Role; {
+			case cell(r):
 				more = []string{"AXRowIndexRange", "AXColumnIndexRange"}
 				if chooses(el.node) {
 					more = append(more, "AXSelected")
 				}
-			case el.node.Role == platform.RoleTable:
-				more = []string{"AXSelectedCells"}
+				if el.header != 0 {
+					more = append(more, "AXColumnHeaderUIElements")
+				}
+				if r != platform.RoleCell {
+					more = append(more, "AXSortDirection") // as WebKit's headers
+				}
+			case r == platform.RoleTable:
+				more = []string{"AXSelectedRows", "AXSelectedCells"}
+				if el.headers != nil {
+					more = append(more, "AXColumnHeaderUIElements")
+				}
 			}
 			if el.node.RoleDescription != "" {
 				more = append(more, "AXRoleDescription")
@@ -828,15 +896,36 @@ func registerAccessClass() {
 					if cell(el.node.Role) && i > 0 {
 						return send(class("NSValue"), "valueWithRange:", uintptr(i-1), 1)
 					}
-				case "AXSelectedCells":
-					if el.node.Role == platform.RoleTable {
-						var cells []id
-						for _, cid := range el.chosenCells {
-							if c := el.s.elements[cid]; c != nil {
-								cells = append(cells, c.obj)
-							}
+				case "AXSelectedCells", "AXSelectedRows", "AXColumnHeaderUIElements":
+					var ids []uint64
+					switch {
+					case el.node.Role == platform.RoleTable && stringOf(attr) == "AXSelectedCells":
+						ids = el.chosenCells
+					case el.node.Role == platform.RoleTable && stringOf(attr) == "AXSelectedRows":
+						ids = el.chosen
+					case el.node.Role == platform.RoleTable:
+						ids = el.headers
+					case cell(el.node.Role) && el.header != 0:
+						ids = []uint64{el.header}
+					default:
+						return sendSuper(self, "MyGoAccessibilityElement", cmd, uintptr(attr))
+					}
+					objs := make([]id, 0, len(ids))
+					for _, cid := range ids {
+						if c := el.s.elements[cid]; c != nil {
+							objs = append(objs, c.obj)
 						}
-						return nsArray(cells...)
+					}
+					return nsArray(objs...)
+				case "AXSortDirection":
+					if r := el.node.Role; r == platform.RoleColumnHeader || r == platform.RoleRowHeader {
+						switch {
+						case el.node.States&platform.AccessSortAscending != 0:
+							return nsString("AXAscendingSortDirection")
+						case el.node.States&platform.AccessSortDescending != 0:
+							return nsString("AXDescendingSortDirection")
+						}
+						return nsString("AXUnknownSortDirection")
 					}
 				case "AXARIACurrent":
 					if c := el.node.Current; c != platform.CurrentNone {

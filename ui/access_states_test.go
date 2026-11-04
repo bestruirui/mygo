@@ -109,6 +109,10 @@ func TestCellSelected(t *testing.T) {
 	if n := accessNode(t, tree, platform.RoleTable, "Plain"); n.States&platform.AccessSelectable != 0 {
 		t.Error("a table of plain cells chooses them")
 	}
+	// The word VoiceOver is given to read after a chosen cell's name.
+	if tree.Selected != "selected" {
+		t.Errorf("the tree's word for a chosen cell is %q", tree.Selected)
+	}
 	picked = 3
 	tt.Frame()
 	if n := accessNode(t, tt.h.access, platform.RoleCell, "4"); n.States&platform.AccessChecked == 0 || cells[3].bg == (Color{}) {

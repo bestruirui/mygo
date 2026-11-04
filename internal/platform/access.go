@@ -15,6 +15,11 @@ type AccessTree struct {
 	// read: what an alert (RoleAlert) shows as it appears or changes, as
 	// ARIA's assertive live regions.
 	Alerts []string
+	// Selected is the word for a chosen cell of a grid in the window's
+	// language ("selected"), given while a cell says whether it is
+	// chosen, for a bridge whose screen reader reads no chosen state of
+	// cells to say with its name.
+	Selected string
 }
 
 // AccessNode is an element of an AccessTree.

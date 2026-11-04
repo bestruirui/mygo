@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/egoist/mygo/internal/l10n"
 	"github.com/egoist/mygo/internal/platform"
 )
 
@@ -433,6 +434,9 @@ func (rt *engine) accessTree() *platform.AccessTree {
 	// ARIA's grid holds its gridcells' selection.
 	for i := range t.Nodes {
 		if n := &t.Nodes[i]; cellRole(n.Role) && n.States&platform.AccessSelectable != 0 {
+			if t.Selected == "" {
+				t.Selected = l10n.In(rt.lang).Selected()
+			}
 			for p := n.Parent; p >= 0; p = t.Nodes[p].Parent {
 				if t.Nodes[p].Role == platform.RoleTable {
 					t.Nodes[p].States |= platform.AccessSelectable

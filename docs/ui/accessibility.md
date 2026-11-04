@@ -142,18 +142,22 @@ say. `RoleDescription` is AppKit's `AXRoleDescription`, ATK's
 `roledescription` attribute and UI Automation's `LocalizedControlType`.
 `Controls` is AppKit's `AXLinkedUIElements`, ATK's `controller-for`
 relation (and `controlled-by` on what it controls) and UI Automation's
-`ControllerFor`, which screen readers offer to move to. `HasPopup` is
-AppKit's `AXPopupValue` with the `AXShowMenu` action, which presses the
-element, ATK's `has-popup` state and `haspopup` attribute, and UI
-Automation's ExpandCollapse pattern (with `Expanded`) and
-`AriaProperties` (`haspopup=listbox`). `Sort` is AppKit's
-`AXSortDirection` (unknown for another order), ATK's `sort` attribute,
-and UI Automation's `ItemStatus` and `AriaProperties` (`sort=other`), as
-[`Table`](table.md)'s headers say from `ListState.Sort`. A chosen cell is
-AppKit's `AXSelected` with its table's `AXSelectedCells`, and its row
-in the table's `AXSelectedRows`, as NSTableView tells its choice, ATK's
-selectable and selected states, and UI Automation's SelectionItem, in the
-table's Selection.
+`ControllerFor`, which screen readers offer to move to (VoiceOver's
+VO-J). `HasPopup` is AppKit's `AXPopupValue` with the `AXShowMenu`
+action, which presses the element, ATK's `has-popup` state and
+`haspopup` attribute, and UI Automation's ExpandCollapse pattern (with
+`Expanded`) and `AriaProperties` (`haspopup=listbox`). `Sort` is
+AppKit's `AXSortDirection` (unknown for another order) on a header that
+is a sort button (`AXSortButton`), as NSTableHeaderView's are, ATK's
+`sort` attribute, and UI Automation's `ItemStatus` and `AriaProperties`
+(`sort=other`), as [`Table`](table.md)'s headers say from
+`ListState.Sort`. A chosen cell is AppKit's `AXSelected` with its
+table's `AXSelectedCells`, and its row in the table's `AXSelectedRows`,
+as NSTableView tells its choice; as VoiceOver reads neither the state of
+a cell nor its change, the cell says "selected" after its name, in the
+app's language, and a cell chosen away from the focus is read out. It is
+ATK's selectable and selected states, and UI Automation's SelectionItem,
+in the table's Selection.
 
 A [test](testing.md#what-assistive-technology-sees) reads them as
 assistive technology gets them, with `Tester.AccessByRole`:

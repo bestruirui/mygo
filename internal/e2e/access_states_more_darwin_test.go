@@ -23,6 +23,10 @@ func TestAccessRoleDescriptionPopupSelected(t *testing.T) {
 			ui.Button(c, "Fruit").HasPopup(ui.PopupListBox)
 			ui.Column(c).Role(ui.RoleTable).Label("November").Children(func() {
 				ui.Row(c).Role(ui.RoleRow).Gap(8).Children(func() {
+					ui.Text(c, "Day").Role(ui.RoleColumnHeader).Sort(ui.SortDescending)
+					ui.Text(c, "Note").Role(ui.RoleColumnHeader)
+				})
+				ui.Row(c).Role(ui.RoleRow).Gap(8).Children(func() {
 					ui.Text(c, "1").Role(ui.RoleCell).Checked(false)
 					ui.Text(c, "2").Role(ui.RoleCell).Checked(true)
 				})
@@ -33,23 +37,33 @@ func TestAccessRoleDescriptionPopupSelected(t *testing.T) {
 	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
 	// VoiceOver asks for the attributes an element names, and reads a
 	// table's choice by its rows, as NSTableView's: the row of the chosen
-	// cell is chosen, and the cells say which column they are in.
+	// cell is chosen, and the cells say which column they are in, under
+	// which header. It reads no cell's AXSelected, so the chosen cell
+	// says it after its name. The header sorting the rows is a sort
+	// button, as NSTableHeaderView's.
 	// The ranges and arrays read as descriptions, which hold want.
 	for _, c := range []struct{ label, attr, want string }{
 		{"Highlights", "AXRoleDescription", "carousel"},
 		{"Fruit", "AXPopupValue", "listbox"},
-		{"2", "AXSelected", "1"},
+		{"2, selected", "AXSelected", "1"},
 		{"1", "AXSelected", "0"},
 		{"1", "AXColumnIndexRange", "{0, 1}"},
-		{"2", "AXColumnIndexRange", "{1, 1}"},
-		{"2", "AXRowIndexRange", "{0, 1}"},
+		{"2, selected", "AXColumnIndexRange", "{1, 1}"},
+		{"2, selected", "AXRowIndexRange", "{1, 1}"},
+		{"1", "AXColumnHeaderUIElements", "MyGoAccessibilityElement"},
 		{"November", "AXSelectedCells", "MyGoAccessibilityElement"},
 		{"November", "AXSelectedRows", "MyGoAccessibilityElement"},
+		{"November", "AXColumnHeaderUIElements", "MyGoAccessibilityElement"},
+		{"Day", "AXRole", "AXButton"},
+		{"Day", "AXSubrole", "AXSortButton"},
+		{"Day", "AXSortDirection", "AXDescendingSortDirection"},
+		{"Note", "AXRole", "AXCell"},
+		{"Note", "AXSortDirection", "AXUnknownSortDirection"},
 	} {
 		eventually(t, c.label+"'s "+c.attr, func() bool {
 			v, _, named, ok := axAttribute(w, c.label, c.attr)
 			partial := strings.HasSuffix(c.attr, "Range") || strings.HasSuffix(c.attr, "s")
-			return ok && named && (v == c.want || partial && strings.Contains(v, c.want))
+			return ok && (named || c.attr == "AXRole" || c.attr == "AXSubrole") && (v == c.want || partial && strings.Contains(v, c.want))
 		})
 	}
 }
