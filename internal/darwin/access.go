@@ -43,6 +43,11 @@ type accessElement struct {
 	// the elements the element controls (AXLinkedUIElements).
 	chosenCells []uint64
 	linked      []id
+	// cellRow says a row is chosen as it holds a chosen cell, and at
+	// where a cell is in its table, its row and column from 1, 0 where
+	// unknown.
+	cellRow bool
+	at      [2]int
 }
 
 var (
@@ -177,6 +182,32 @@ func showsMenu(n platform.AccessNode) bool {
 // included.
 func cell(r platform.AccessRole) bool {
 	return r == platform.RoleCell || r == platform.RoleColumnHeader || r == platform.RoleRowHeader
+}
+
+// placeCells tells the cells of a table's row where they are, the row
+// from 1 or 0 for its header, as NSTableView's cells say
+// (AXRowIndexRange, AXColumnIndexRange), and reports whether one of
+// them is chosen.
+func (s *surface) placeCells(row *accessElement, index int) (chosen bool) {
+	col := 0
+	for _, cid := range row.children {
+		c := s.elements[cid]
+		if c == nil || !cell(c.node.Role) {
+			continue
+		}
+		col++
+		if at := [2]int{index, col}; c.at != at {
+			if index > 0 && c.at[0] != index {
+				send(c.obj, "setAccessibilityRowIndexRange:", uintptr(index-1), 1)
+			}
+			if c.at[1] != col {
+				send(c.obj, "setAccessibilityColumnIndexRange:", uintptr(col-1), 1)
+			}
+			c.at = at
+		}
+		chosen = chosen || chooses(c.node) && c.node.States&platform.AccessChecked != 0
+	}
+	return chosen
 }
 
 func roleOf(n platform.AccessNode) (role, subrole string) {
@@ -475,17 +506,31 @@ func (s *surface) UpdateAccessibility(tree *platform.AccessTree) {
 			var chosenIDs []uint64
 			for _, cid := range children[i] {
 				c := s.elements[cid]
-				if r := c.node.Role; r != platform.RoleRow && r != platform.RoleListItem && r != platform.RoleTreeItem || n.SetSize > 0 && c.node.PosInSet == 0 {
+				header := n.SetSize > 0 && c.node.PosInSet == 0
+				if r := c.node.Role; r != platform.RoleRow && r != platform.RoleListItem && r != platform.RoleTreeItem || header {
+					if r == platform.RoleRow {
+						s.placeCells(c, 0)
+					}
 					continue // a table's header
 				}
+				index := c.node.PosInSet - 1
 				if c.node.PosInSet == 0 {
-					send(c.obj, "setAccessibilityIndex:", uintptr(len(rows)))
+					index = len(rows)
+					send(c.obj, "setAccessibilityIndex:", uintptr(index))
 				}
 				rows = append(rows, c.obj)
 				if c.node.States&platform.AccessOffscreen == 0 {
 					shown = append(shown, c.obj)
 				}
-				if chooses(c.node) && c.node.States&platform.AccessChecked != 0 {
+				// A row holding a chosen cell is chosen, as NSTableView
+				// tells the cells chosen by their rows: VoiceOver reads a
+				// table's choice, and a cell's, by them.
+				byCells := c.node.Role == platform.RoleRow && s.placeCells(c, index+1) && !chooses(c.node)
+				if byCells != c.cellRow {
+					c.cellRow = byCells
+					send(c.obj, "setAccessibilitySelected:", boolArg(byCells || chooses(c.node) && c.node.States&platform.AccessChecked != 0))
+				}
+				if chooses(c.node) && c.node.States&platform.AccessChecked != 0 || byCells {
 					chosen = append(chosen, c.obj)
 					chosenIDs = append(chosenIDs, cid)
 				}
@@ -708,6 +753,27 @@ func registerAccessClass() {
 				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXPopupValue")))
 			}
 			names = send(names, "arrayByAddingObject:", uintptr(nsString("AXElementBusy")))
+			// Where a cell is and whether it is chosen, and the cells a
+			// table has chosen, which AppKit's names of an AXCell and an
+			// AXTable leave out though their setters are called.
+			var more []string
+			switch {
+			case cell(el.node.Role):
+				more = []string{"AXRowIndexRange", "AXColumnIndexRange"}
+				if chooses(el.node) {
+					more = append(more, "AXSelected")
+				}
+			case el.node.Role == platform.RoleTable:
+				more = []string{"AXSelectedCells"}
+			}
+			if el.node.RoleDescription != "" {
+				more = append(more, "AXRoleDescription")
+			}
+			for _, name := range more {
+				if a := nsString(name); !sendBool(names, "containsObject:", uintptr(a)) {
+					names = send(names, "arrayByAddingObject:", uintptr(a))
+				}
+			}
 			if el.node.Current != platform.CurrentNone {
 				names = send(names, "arrayByAddingObject:", uintptr(nsString("AXARIACurrent")))
 			}
@@ -740,6 +806,38 @@ func registerAccessClass() {
 					}
 				case "AXElementBusy":
 					return nsBool(el.node.States&platform.AccessBusy != 0)
+				// The role description the app gives, which AppKit's
+				// answer here leaves out though accessibilityRoleDescription
+				// gives it.
+				case "AXRoleDescription":
+					if el.node.RoleDescription != "" {
+						return nsString(el.node.RoleDescription)
+					}
+				case "AXSelected":
+					if cell(el.node.Role) && chooses(el.node) {
+						return nsBool(el.node.States&platform.AccessChecked != 0)
+					}
+					if el.cellRow {
+						return nsBool(true)
+					}
+				case "AXRowIndexRange", "AXColumnIndexRange":
+					i := el.at[0]
+					if stringOf(attr) == "AXColumnIndexRange" {
+						i = el.at[1]
+					}
+					if cell(el.node.Role) && i > 0 {
+						return send(class("NSValue"), "valueWithRange:", uintptr(i-1), 1)
+					}
+				case "AXSelectedCells":
+					if el.node.Role == platform.RoleTable {
+						var cells []id
+						for _, cid := range el.chosenCells {
+							if c := el.s.elements[cid]; c != nil {
+								cells = append(cells, c.obj)
+							}
+						}
+						return nsArray(cells...)
+					}
 				case "AXARIACurrent":
 					if c := el.node.Current; c != platform.CurrentNone {
 						return nsString(c.String())

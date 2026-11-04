@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -30,15 +31,25 @@ func TestAccessRoleDescriptionPopupSelected(t *testing.T) {
 	}
 	w := newWindow(t, mygo.WindowOptions{Title: "States", Width: 400, Height: 300, Content: ui.View(view)})
 	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
+	// VoiceOver asks for the attributes an element names, and reads a
+	// table's choice by its rows, as NSTableView's: the row of the chosen
+	// cell is chosen, and the cells say which column they are in.
+	// The ranges and arrays read as descriptions, which hold want.
 	for _, c := range []struct{ label, attr, want string }{
 		{"Highlights", "AXRoleDescription", "carousel"},
 		{"Fruit", "AXPopupValue", "listbox"},
 		{"2", "AXSelected", "1"},
 		{"1", "AXSelected", "0"},
+		{"1", "AXColumnIndexRange", "{0, 1}"},
+		{"2", "AXColumnIndexRange", "{1, 1}"},
+		{"2", "AXRowIndexRange", "{0, 1}"},
+		{"November", "AXSelectedCells", "MyGoAccessibilityElement"},
+		{"November", "AXSelectedRows", "MyGoAccessibilityElement"},
 	} {
 		eventually(t, c.label+"'s "+c.attr, func() bool {
-			v, _, _, ok := axAttribute(w, c.label, c.attr)
-			return ok && v == c.want
+			v, _, named, ok := axAttribute(w, c.label, c.attr)
+			partial := strings.HasSuffix(c.attr, "Range") || strings.HasSuffix(c.attr, "s")
+			return ok && named && (v == c.want || partial && strings.Contains(v, c.want))
 		})
 	}
 }
