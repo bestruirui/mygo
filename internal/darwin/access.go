@@ -736,6 +736,17 @@ func registerAccessClass() {
 					if el.node.KeyShortcuts != "" {
 						return nsString(el.node.KeyShortcuts)
 					}
+				// The role and subrole the newer API was given, so that
+				// both APIs agree: AppKit's answer here misses a table's.
+				case "AXRole", "AXSubrole":
+					role, subrole := roleOf(el.node)
+					if stringOf(attr) == "AXRole" {
+						return nsString(role)
+					}
+					if subrole != "" {
+						return nsString(subrole)
+					}
+					return 0
 				case "AXARIARowCount", "AXARIAColumnCount", "AXARIARowIndex", "AXARIAColumnIndex":
 					if v := el.ariaGrid(stringOf(attr)); v > 0 {
 						return nsNumberInt(v)

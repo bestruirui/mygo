@@ -8,14 +8,16 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/internal/darwin"
 	"github.com/egoist/mygo/ui"
 )
 
 // TestAccessGrid reads, as VoiceOver does, a spreadsheet of 10,000 rows
 // built only where it shows: a table whose size is in AXARIARowCount and
-// AXARIAColumnCount, and AXRowCount, whose rows and cells say their
-// places in AXARIARowIndex and AXARIAColumnIndex, as WebKit's grids do;
-// a cell without a column of its own names no AXARIAColumnIndex.
+// AXARIAColumnCount, and AXRowCount, whose rows say which of all they are
+// (AXIndex) and, with its cells, their places in AXARIARowIndex and
+// AXARIAColumnIndex, as WebKit's grids do; a cell without a column of its
+// own names no AXARIAColumnIndex.
 func TestAccessGrid(t *testing.T) {
 	var frames atomic.Int32
 	cell := func(c *ui.Context, name string) ui.Element {
@@ -39,21 +41,42 @@ func TestAccessGrid(t *testing.T) {
 	}
 	w := newWindow(t, mygo.WindowOptions{Title: "Grid", Width: 400, Height: 300, Content: ui.View(view)})
 	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
+	// find reads the element named label through the newer API, which
+	// VoiceOver reads its role, rows and places through.
+	find := func(label string) (n darwin.TestAccessNode, ok bool) {
+		mygo.RunOnMain(func() {
+			for _, node := range darwin.TestAccessibility(w.NativeHandle()) {
+				if node.Label == label && !ok {
+					n, ok = node, true
+				}
+			}
+		})
+		return n, ok
+	}
+	eventually(t, "the grid", func() bool {
+		n, ok := find("Sheet")
+		return ok && n.Role == "AXTable" && n.RowCount == 10001
+	})
+	if n, _ := find("Outline"); n.Role != "AXTable" {
+		t.Errorf("the tree grid: %+v", n)
+	}
+	if n, _ := find("A4121 C4121"); n.Role != "AXRow" || n.Index != 4121 {
+		t.Errorf("row 4,122: %+v", n)
+	}
+	// The older API, which says the role as the newer one does, and the
+	// counts and places as WebKit's grids do.
 	for _, c := range []struct{ label, attr, want string }{
 		{"Sheet", "AXRole", "AXTable"},
 		{"Sheet", "AXARIARowCount", "10001"},
 		{"Sheet", "AXARIAColumnCount", "3"},
-		{"Sheet", "AXRowCount", "10001"},
 		{"A4121 C4121", "AXARIARowIndex", "4122"},
-		{"A4121 C4121", "AXIndex", "4121"},
 		{"C4121", "AXARIAColumnIndex", "3"},
 		{"C4121", "AXARIARowIndex", "4122"},
 		{"A4121", "AXARIARowIndex", "4122"},
-		{"Outline", "AXRole", "AXTable"},
 	} {
 		eventually(t, c.label+"'s "+c.attr, func() bool {
 			v, _, named, ok := axAttribute(w, c.label, c.attr)
-			return ok && (named || c.attr == "AXRole" || c.attr == "AXRowCount" || c.attr == "AXIndex") && v == c.want
+			return ok && (named || c.attr == "AXRole") && v == c.want
 		})
 	}
 	if v, _, named, ok := axAttribute(w, "A4121", "AXARIAColumnIndex"); !ok || named {
