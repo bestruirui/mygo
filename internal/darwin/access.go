@@ -882,6 +882,18 @@ func registerAccessClass() {
 					}
 				case "AXElementBusy":
 					return nsBool(el.node.States&platform.AccessBusy != 0)
+				// The role and subrole the newer API was given, so that
+				// both APIs agree: AppKit's answer here missed a header
+				// made a sort button.
+				case "AXRole", "AXSubrole":
+					role, subrole := roleOf(el.node)
+					if stringOf(attr) == "AXRole" {
+						return nsString(role)
+					}
+					if subrole != "" {
+						return nsString(subrole)
+					}
+					return 0
 				// The role description the app gives, which AppKit's
 				// answer here leaves out though accessibilityRoleDescription
 				// gives it.

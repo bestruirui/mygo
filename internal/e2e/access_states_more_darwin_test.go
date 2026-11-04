@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -35,6 +36,16 @@ func TestAccessRoleDescriptionPopupSelected(t *testing.T) {
 	}
 	w := newWindow(t, mygo.WindowOptions{Title: "States", Width: 400, Height: 300, Content: ui.View(view)})
 	eventually(t, "a frame", func() bool { return frames.Load() > 0 })
+	// The headers' roles through the newer API, which VoiceOver reads,
+	// as through the older one below.
+	for label, want := range map[string]string{"Day": "AXButton/AXSortButton", "Note": "AXCell"} {
+		eventually(t, label+"'s role", func() bool {
+			nodes, _ := accessibility(w)
+			return slices.ContainsFunc(nodes, func(n accessNode) bool {
+				return n.label == label && n.role == want
+			})
+		})
+	}
 	// VoiceOver asks for the attributes an element names, and reads a
 	// table's choice by its rows, as NSTableView's: the row of the chosen
 	// cell is chosen, and the cells say which column they are in, under
