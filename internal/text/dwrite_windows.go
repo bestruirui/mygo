@@ -143,9 +143,12 @@ const (
 	paramsGetRenderingMode              = 7
 	params1GetGrayscaleEnhancedContrast = 8
 	// IDWriteLocalizedStrings
-	stringsFindLocaleName  = 4
-	stringsGetStringLength = 7
-	stringsGetString       = 8
+	stringsGetCount            = 3
+	stringsFindLocaleName      = 4
+	stringsGetLocaleNameLength = 5
+	stringsGetLocaleName       = 6
+	stringsGetStringLength     = 7
+	stringsGetString           = 8
 
 	// IDWriteTextFormat, and IDWriteTextLayout which extends it
 	formatSetTextAlignment     = 3
@@ -168,9 +171,14 @@ const (
 	glyphsCreateAlphaTexture   = 4
 	colorRunsMoveNext          = 3
 	colorRunsGetCurrentRun     = 4
-	// IDWriteFontSetBuilder1
-	builderCreateFontSet = 6
-	builderAddFontFile   = 7
+	// IDWriteFontSetBuilder, and IDWriteFontSetBuilder1
+	builderAddFontFaceReference = 3 // with properties
+	builderCreateFontSet        = 6
+	builderAddFontFile          = 7
+	// IDWriteFontSet
+	setGetFontCount         = 3
+	setGetFontFaceReference = 4
+	setGetPropertyValues    = 9 // of a font
 	// IDWriteInMemoryFontFileLoader
 	loaderCreateInMemoryFontFileReference = 4
 )
@@ -180,6 +188,12 @@ const (
 	fontStyleNormal   = 0
 	fontStyleItalic   = 2
 	fontStretchNormal = 5
+
+	// DWRITE_FONT_PROPERTY_ID: the family names, and the last property.
+	propertyWWSFamilyName         = 1
+	propertyTypographicFamilyName = 2
+	propertyWin32FamilyName       = 5
+	propertyTypographicFaceName   = 13
 
 	wordWrappingWrap      = 0
 	wordWrappingNoWrap    = 1
@@ -267,7 +281,11 @@ type (
 		strikethroughPosition             int16
 		strikethroughThickness            uint16
 	}
-	dwRect struct{ left, top, right, bottom int32 }
+	dwRect         struct{ left, top, right, bottom int32 }
+	dwFontProperty struct {
+		id            uint32
+		value, locale *uint16
+	}
 )
 
 // ptr converts an address from DirectWrite to a pointer.
@@ -375,16 +393,30 @@ type dwrite struct {
 	clearLevel   float32
 	aliased      bool
 
-	// The fonts the app registers: their files, a collection of them,
-	// the family name of each name they are registered under, and the
-	// names they are listed under: the one the app gave, or their own.
+	// The fonts the app registers: their files, their faces under the
+	// families the app gave them, a collection of both, the family name
+	// of each name they are registered under, and the names they are
+	// listed under: the one the app gave, or their own.
 	loader  uintptr
 	files   []uintptr
+	given   []givenFace
 	custom  uintptr
 	aliases map[string]string
 	names   []string
 
 	scratch []byte
+}
+
+// givenFace is a face of the app's fonts under a family the app gave it,
+// which a font set holds apart from the face's own family (#1224).
+type givenFace struct {
+	ref   uintptr // IDWriteFontFaceReference
+	props []fontProperty
+}
+
+type fontProperty struct {
+	id            uint32
+	value, locale string
 }
 
 type formatKey struct {
@@ -1398,30 +1430,55 @@ func (e *dwrite) register(data []byte, family string) error {
 	if hr := call(e.loader, loaderCreateInMemoryFontFileReference, e.factory, uintptr(unsafe.Pointer(&data[0])), uintptr(len(data)), 0, uintptr(unsafe.Pointer(&file))); failed(hr) {
 		return fmt.Errorf("mygo: cannot add font (HRESULT %#08x)", uint32(hr))
 	}
-	one, err := e.newCollection([]uintptr{file})
+	set, err := e.newFontSet([]uintptr{file}, nil)
 	if err != nil {
 		release(file)
 		return err
 	}
-	names := familyNames(one)
-	release(one)
+	var names []string
+	if one, err := e.collectionOf(set); err == nil {
+		names = familyNames(one)
+		release(one)
+	}
 	if len(names) == 0 {
+		release(set)
 		release(file)
 		return errors.New("mygo: cannot add font: not a font DirectWrite reads")
 	}
-	coll, err := e.newCollection(append(e.files, file))
+	// A family the app gives, unless it is the font's own, holds only the
+	// files registered under it, as on macOS: their faces again, under it
+	// rather than their own family (#1224).
+	alias := names[0]
+	var given []givenFace
+	if family != "" && !strings.EqualFold(family, names[0]) {
+		alias = family
+		if a, ok := e.aliases[strings.ToLower(family)]; ok {
+			alias = a
+		}
+		if given = givenFaces(set, alias); len(given) == 0 {
+			release(set)
+			release(file)
+			return errors.New("mygo: cannot add font under another family name")
+		}
+	}
+	release(set)
+	coll, err := e.newCollection(append(e.files, file), append(e.given, given...))
 	if err != nil {
+		for _, f := range given {
+			release(f.ref)
+		}
 		release(file)
 		return err
 	}
 	e.files = append(e.files, file)
+	e.given = append(e.given, given...)
 	release(e.custom)
 	e.custom = coll
 	for _, name := range names {
 		e.aliases[strings.ToLower(name)] = name
 	}
 	if family != "" {
-		e.aliases[strings.ToLower(family)] = names[0]
+		e.aliases[strings.ToLower(family)] = alias
 		// Listed under the name the app gave it, which is the one it uses.
 		e.names = append(e.names, family)
 	} else {
@@ -1441,9 +1498,21 @@ func (e *dwrite) register(data []byte, family string) error {
 	return nil
 }
 
-// newCollection returns a font collection of font files.
-func (e *dwrite) newCollection(files []uintptr) (uintptr, error) {
-	var builder, set, coll uintptr
+// newCollection returns a font collection of font files, and of faces
+// under the families the app gave them.
+func (e *dwrite) newCollection(files []uintptr, given []givenFace) (uintptr, error) {
+	set, err := e.newFontSet(files, given)
+	if err != nil {
+		return 0, err
+	}
+	defer release(set)
+	return e.collectionOf(set)
+}
+
+// newFontSet returns a font set of font files, and of faces under the
+// families the app gave them.
+func (e *dwrite) newFontSet(files []uintptr, given []givenFace) (uintptr, error) {
+	var builder, set uintptr
 	if hr := call(e.factory5, factory5CreateFontSetBuilder, uintptr(unsafe.Pointer(&builder))); failed(hr) {
 		return 0, fmt.Errorf("mygo: cannot add font (HRESULT %#08x)", uint32(hr))
 	}
@@ -1453,14 +1522,64 @@ func (e *dwrite) newCollection(files []uintptr) (uintptr, error) {
 			return 0, fmt.Errorf("mygo: cannot add font (HRESULT %#08x)", uint32(hr))
 		}
 	}
+	for _, f := range given {
+		props := make([]dwFontProperty, len(f.props))
+		for i, p := range f.props {
+			props[i] = dwFontProperty{p.id, &utf16z(p.value)[0], &utf16z(p.locale)[0]}
+		}
+		hr := call(builder, builderAddFontFaceReference, f.ref, uintptr(unsafe.Pointer(&props[0])), uintptr(len(props)))
+		runtime.KeepAlive(props)
+		if failed(hr) {
+			return 0, fmt.Errorf("mygo: cannot add font under another family name (HRESULT %#08x)", uint32(hr))
+		}
+	}
 	if hr := call(builder, builderCreateFontSet, uintptr(unsafe.Pointer(&set))); failed(hr) {
 		return 0, fmt.Errorf("mygo: cannot add font (HRESULT %#08x)", uint32(hr))
 	}
-	defer release(set)
+	return set, nil
+}
+
+// collectionOf returns the font collection of a font set.
+func (e *dwrite) collectionOf(set uintptr) (uintptr, error) {
+	var coll uintptr
 	if hr := call(e.factory5, factory3CreateFontCollectionFromFontSet, set, uintptr(unsafe.Pointer(&coll))); failed(hr) {
 		return 0, fmt.Errorf("mygo: cannot add font (HRESULT %#08x)", uint32(hr))
 	}
 	return coll, nil
+}
+
+// givenFaces returns the faces of a font set under a family the app gives
+// them: each with its own properties, its weight, stretch and style among
+// them, but for its family names, which are family.
+func givenFaces(set uintptr, family string) []givenFace {
+	var out []givenFace
+	for i := range uint32(call(set, setGetFontCount)) {
+		var ref uintptr
+		if failed(call(set, setGetFontFaceReference, uintptr(i), uintptr(unsafe.Pointer(&ref)))) {
+			continue
+		}
+		f := givenFace{ref: ref}
+		for id := uint32(propertyWWSFamilyName); id <= propertyTypographicFaceName; id++ {
+			switch id {
+			case propertyWWSFamilyName, propertyTypographicFamilyName, propertyWin32FamilyName:
+				f.props = append(f.props, fontProperty{id, family, "en-us"})
+				continue
+			}
+			var exists int32
+			var strs uintptr
+			if failed(call(set, setGetPropertyValues, uintptr(i), uintptr(id), uintptr(unsafe.Pointer(&exists)), uintptr(unsafe.Pointer(&strs)))) || strs == 0 {
+				continue // as the typographic face name before Windows 10 1709
+			}
+			for j := range uint32(call(strs, stringsGetCount)) {
+				f.props = append(f.props, fontProperty{id,
+					localizedString(strs, j, stringsGetStringLength, stringsGetString),
+					localizedString(strs, j, stringsGetLocaleNameLength, stringsGetLocaleName)})
+			}
+			release(strs)
+		}
+		out = append(out, f)
+	}
+	return out
 }
 
 // appFamilies lists the families of the app's fonts, monospaced when
@@ -1559,12 +1678,18 @@ func englishName(strs uintptr) string {
 	if exists == 0 {
 		index = 0
 	}
-	var length uint32
-	if failed(call(strs, stringsGetStringLength, uintptr(index), uintptr(unsafe.Pointer(&length)))) {
+	return localizedString(strs, index, stringsGetStringLength, stringsGetString)
+}
+
+// localizedString returns a string of localized strings, or its locale
+// name, by the methods of its length and of it.
+func localizedString(strs uintptr, index uint32, length, get int) string {
+	var n uint32
+	if failed(call(strs, length, uintptr(index), uintptr(unsafe.Pointer(&n)))) {
 		return ""
 	}
-	buf := make([]uint16, length+1)
-	if failed(call(strs, stringsGetString, uintptr(index), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))) {
+	buf := make([]uint16, n+1)
+	if failed(call(strs, get, uintptr(index), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))) {
 		return ""
 	}
 	return syscall.UTF16ToString(buf)
