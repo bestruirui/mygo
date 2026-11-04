@@ -179,6 +179,9 @@ const (
 	// RoleSearch is a landmark holding what searches the app or a
 	// document, as a search field and its button: ARIA's search.
 	RoleSearch
+	// RoleArticle is a self-contained piece of content, as a post of a
+	// feed or a comment of a thread: ARIA's article, no landmark.
+	RoleArticle
 	// RoleNavigation is a landmark holding links that move around the app
 	// or a document, as a breadcrumb trail or a navigation bar: ARIA's
 	// navigation.

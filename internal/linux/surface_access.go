@@ -324,7 +324,7 @@ func loadAccessNames() {
 		platform.RoleHeading: {"heading", "label"},
 		// A landmark, whose xml-roles attribute says which, as Chromium's.
 		platform.RoleNavigation: {"landmark", "panel"}, platform.RoleRegion: {"landmark", "panel"},
-		platform.RoleSearch: {"landmark", "panel"},
+		platform.RoleSearch: {"landmark", "panel"}, platform.RoleArticle: {"article", "panel"},
 		// Live regions, which their object attributes say how to read.
 		platform.RoleLog: {"log", "panel"}, platform.RoleTimer: {"timer", "panel"},
 		platform.RoleAlert:     {"notification", "alert"},

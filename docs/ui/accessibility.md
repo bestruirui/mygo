@@ -272,6 +272,7 @@ WAI-ARIA's Core Accessibility API Mappings say:
 |---|---|---|---|---|
 | `ui.RoleRegion` | a landmark with a `Label`, as an activity feed or a panel; without one, a group | `AXGroup`, `AXLandmarkRegion` | landmark, `xml-roles:region` | Group, the custom landmark type "region" |
 | `ui.RoleSearch` | a landmark holding what searches the app or a document, as the search field and its button at the top of a window | `AXGroup`, `AXLandmarkSearch` | landmark, `xml-roles:search` | Group, the search landmark type |
+| `ui.RoleArticle` | a self-contained piece of content, as a post of a feed or a comment of a thread, named by its `Label`; no landmark | `AXGroup`, `AXDocumentArticle` | article | Group "article" |
 | `ui.RoleLog` | a live region of messages added in order, as a chat's transcript | `AXGroup`, `AXApplicationLog` | log | Group "log", `LiveSetting` polite |
 | `ui.RoleTimer` | a count of time, as a countdown, read only when the user goes to it | `AXGroup`, `AXApplicationTimer` | timer | Group "timer" |
 | `ui.RoleAlert` | a live region of important news, as a field's error, read at once | `AXGroup`, `AXApplicationAlert` | notification | Group "alert", `LiveSetting` assertive |
@@ -323,6 +324,18 @@ ui.Row(c).Role(ui.RoleSearch).Label("Search mail").Gap(6).Children(func() {
 		app.search()
 	}
 })
+```
+
+Each post of a feed, or comment of a thread, is an article, as HTML's
+`<article>`, which screen readers step through one by one:
+
+```go
+for _, p := range app.posts {
+	ui.Column(c).Key(p.ID).Role(ui.RoleArticle).Label(p.Title).Gap(4).Children(func() {
+		ui.Text(c, p.Title).Bold().Role(ui.RoleHeading).Level(3)
+		ui.Text(c, p.Body)
+	})
+}
 ```
 
 Each component's page says what assistive technology sees of it.

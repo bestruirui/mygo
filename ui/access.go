@@ -115,6 +115,10 @@ const (
 	// window: screen readers list it among the window's landmarks, and
 	// jump to it.
 	RoleSearch
+	// RoleArticle is a self-contained piece of content, as a post of a
+	// feed or a comment of a thread, named by its Label: screen readers
+	// step from one article to the next, as HTML's article.
+	RoleArticle
 	// RoleNavigation is a landmark holding links that move around the
 	// app or a document, as a breadcrumb trail (Breadcrumbs) or a
 	// navigation bar: screen readers list it among the window's
@@ -290,7 +294,8 @@ func leafRole(r platform.AccessRole) bool {
 	case platform.RoleGroup, platform.RoleList, platform.RoleScroll, platform.RoleDialog, platform.RoleAlertDialog, platform.RolePopup, platform.RoleStatus,
 		platform.RoleTabList, platform.RoleTable, platform.RoleRow, platform.RoleCell, platform.RoleTree, platform.RoleListItem,
 		platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleNavigation,
-		platform.RoleRegion, platform.RoleLog, platform.RoleTimer, platform.RoleAlert, platform.RoleSearch:
+		platform.RoleRegion, platform.RoleLog, platform.RoleTimer, platform.RoleAlert, platform.RoleSearch,
+		platform.RoleArticle:
 		return false
 	}
 	return true

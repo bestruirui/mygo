@@ -139,6 +139,25 @@ func TestUIALandmarks(t *testing.T) {
 	}
 }
 
+// An article is a group that says it is one, but no landmark.
+func TestUIAArticle(t *testing.T) {
+	e := &uiaElement{n: platform.AccessNode{Role: platform.RoleArticle, Label: "Post by Ann"}}
+	var v variant
+	if e.property(uiaControlTypeProperty, &v); v.Val != 50026 {
+		t.Errorf("control type %d, want Group", v.Val)
+	}
+	for _, id := range []int{uiaLocalizedControlProperty, uiaAriaRoleProperty} {
+		v = variant{}
+		if e.property(id, &v); v.VT != vtBSTR || bstrString(uintptr(v.Val)) != "article" {
+			t.Errorf("property %d %+v, want \"article\"", id, v)
+		}
+	}
+	v = variant{}
+	if e.property(uiaLandmarkTypeProperty, &v); v.VT != vtEmpty {
+		t.Errorf("an article's landmark type %+v, want none", v)
+	}
+}
+
 func TestChildChanges(t *testing.T) {
 	e := func(id uint64) *uiaElement { return &uiaElement{n: platform.AccessNode{ID: id}} }
 	a, b, c, d := e(1), e(2), e(3), e(4)

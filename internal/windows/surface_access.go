@@ -178,6 +178,7 @@ var uiaControlTypes = map[platform.AccessRole]int32{
 	platform.RoleMenuItemRadio: 50011, platform.RoleHeading: 50020, platform.RoleNavigation: 50026,
 	platform.RoleRegion: 50026, platform.RoleLog: 50026, platform.RoleTimer: 50026, platform.RoleAlert: 50026,
 	platform.RoleSeparator: 50038, platform.RoleRowHeader: 50035, platform.RoleSearch: 50026,
+	platform.RoleArticle: 50026,
 }
 
 // ariaRoles are the ARIA roles of nodes whose control type does not say
@@ -186,7 +187,7 @@ var uiaControlTypes = map[platform.AccessRole]int32{
 var ariaRoles = map[platform.AccessRole]string{
 	platform.RoleNavigation: "navigation", platform.RoleRegion: "region", platform.RoleLog: "log",
 	platform.RoleTimer: "timer", platform.RoleAlert: "alert", platform.RoleSeparator: "separator",
-	platform.RoleRowHeader: "rowheader", platform.RoleSearch: "search",
+	platform.RoleRowHeader: "rowheader", platform.RoleSearch: "search", platform.RoleArticle: "article",
 }
 
 // variant is VARIANT, with the value of the types used here.
@@ -1158,7 +1159,7 @@ func (e *uiaElement) property(id int, v *variant) {
 			str("popup")
 		case platform.RoleHeading:
 			str("heading")
-		case platform.RoleRegion, platform.RoleLog, platform.RoleTimer, platform.RoleAlert:
+		case platform.RoleRegion, platform.RoleLog, platform.RoleTimer, platform.RoleAlert, platform.RoleArticle:
 			str(ariaRoles[n.Role])
 		case platform.RoleRowHeader:
 			str("row header")

@@ -9,8 +9,9 @@ import (
 
 // TestRegionSeparatorRowHeader checks the roles of landmarks, a rule and
 // a row's header: a region is one only with a name, a search landmark
-// holds its field and button, a rule taller than wide runs up and down,
-// and a row header is named by its content.
+// holds its field and button, an article holds its post, named or not, a
+// rule taller than wide runs up and down, and a row header is named by
+// its content.
 func TestRegionSeparatorRowHeader(t *testing.T) {
 	tt := coreNewTester(func(c *context) {
 		coreColumn(c).AlignItems(Start).Children(func() {
@@ -23,6 +24,12 @@ func TestRegionSeparatorRowHeader(t *testing.T) {
 			coreRow(c).Role(RoleSearch).Label("Site search").Children(func() {
 				coreText(c, "Query").Role(RoleTextField)
 				coreText(c, "Go").Role(RoleButton)
+			})
+			coreColumn(c).Role(RoleArticle).Label("Post by Ann").Children(func() {
+				coreText(c, "Shipped the beta")
+			})
+			coreColumn(c).Role(RoleArticle).Children(func() {
+				coreText(c, "An unnamed post")
 			})
 			coreRow(c).Role(RoleToolbar).Label("Format").Height(20).Children(func() {
 				coreText(c, "Bold")
@@ -51,6 +58,13 @@ func TestRegionSeparatorRowHeader(t *testing.T) {
 				t.Errorf("%s is not in the search landmark", name)
 			}
 		}
+	}
+	post := accessNode(t, tree, platform.RoleArticle, "Post by Ann")
+	if text := accessNode(t, tree, platform.RoleText, "Shipped the beta"); text.Parent < 0 || tree.Nodes[text.Parent].ID != post.ID {
+		t.Errorf("the post's text is not in the article")
+	}
+	if text := accessNode(t, tree, platform.RoleText, "An unnamed post"); text.Parent < 0 || tree.Nodes[text.Parent].Role != platform.RoleArticle {
+		t.Errorf("an article without a name is not one")
 	}
 	for _, n := range tree.Nodes {
 		if n.Role == platform.RoleRegion && n.Label != "Activity" {

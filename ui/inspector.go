@@ -623,6 +623,8 @@ func roleName(r Role) string {
 		return "RowHeader"
 	case RoleSearch:
 		return "Search"
+	case RoleArticle:
+		return "Article"
 	case RoleHeading:
 		return "Heading"
 	case RoleNavigation:
