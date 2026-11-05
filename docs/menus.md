@@ -194,9 +194,10 @@ the title bar does (see [dark mode](frontend.md#dark-mode)). On Windows 11
 they look like the system's own menus, as File Explorer's: roomier items,
 highlights with rounded corners, shortcuts smaller and in a fainter
 color, the rounder corners of the system's flyouts and, from Windows 11
-22H2, Acrylic behind popup menus, as the system's menus have, unless
-transparency effects are off or a contrast theme is on, when they are
-solid.
+22H2, Acrylic behind popup menus, as WinUI's menus have, unless
+transparency effects are off, energy saver or a contrast theme is on, or
+the session is a remote one, when they have the solid background WinUI's
+menus fall back to, with one faint outline.
 
 A window with `AutoHideMenuBar` keeps its menu bar out of sight, and the
 room for the page. Alt pressed alone, or F10, shows the bar with the

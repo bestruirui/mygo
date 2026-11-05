@@ -40,6 +40,61 @@ func TestMenuColors(t *testing.T) {
 	}
 }
 
+// Menus have the material behind them only where DWM surely draws it, and
+// WinUI's solid background elsewhere.
+func TestMenuGlassConditions(t *testing.T) {
+	on := glassConditions{fluent: true, backdrops: true, transparency: true}
+	if !on.glass() {
+		t.Fatalf("%+v: no material, want it", on)
+	}
+	for name, off := range map[string]func(*glassConditions){
+		"Windows 10":               func(c *glassConditions) { c.fluent = false },
+		"Windows 11 before 22H2":   func(c *glassConditions) { c.backdrops = false },
+		"a contrast theme":         func(c *glassConditions) { c.contrast = true },
+		"transparency effects off": func(c *glassConditions) { c.transparency = false },
+		"energy saver":             func(c *glassConditions) { c.energySaver = true },
+		"a remote session":         func(c *glassConditions) { c.remote = true },
+	} {
+		c := on
+		off(&c)
+		if c.glass() {
+			t.Errorf("with %s: the material, want WinUI's solid background", name)
+		}
+	}
+}
+
+// The solid backgrounds are WinUI's fallbacks for its Acrylic, and the
+// opaque highlight and separators are its translucent ones over them, as
+// they show over the material.
+func TestFluentPalette(t *testing.T) {
+	near := func(a, b uint32) bool {
+		for shift := 0; shift < 24; shift += 8 {
+			if d := int(a>>shift&0xFF) - int(b>>shift&0xFF); d < -1 || d > 1 {
+				return false
+			}
+		}
+		return true
+	}
+	for _, c := range []struct {
+		dark bool
+		back uint32
+	}{{false, 0xF9F9F9}, {true, 0x2C2C2C}} {
+		p := fluentPalette(c.dark)
+		if p.back != c.back {
+			t.Errorf("dark %v: background %#06x, want %#06x", c.dark, p.back, c.back)
+		}
+		if got := blend(dibColor(p.wash.color), dibColor(p.back), p.wash.alpha); !near(got, dibColor(p.plate)) {
+			t.Errorf("dark %v: highlight %#06x, want the wash over the background, %#06x", c.dark, p.plate, got)
+		}
+		if got := blend(dibColor(p.rule.color), dibColor(p.back), p.rule.alpha); !near(got, dibColor(p.line)) {
+			t.Errorf("dark %v: separator %#06x, want the rule over the background, %#06x", c.dark, p.line, got)
+		}
+		if p.border == dwmColorDefault || p.border == p.back {
+			t.Errorf("dark %v: outline %#x, want a color of its own", c.dark, p.border)
+		}
+	}
+}
+
 // Items over the material are the premultiplied pixels that show as they
 // were drawn over black and over white: WinUI's translucent highlights
 // as translucent, text as opaque as it covers, and nothing as nothing.

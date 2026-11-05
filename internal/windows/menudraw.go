@@ -179,13 +179,18 @@ type measureItemStruct struct {
 	ItemData                                      uintptr
 }
 
-// menuPalette is the colors of popup menus, COLORREFs: the background and
-// outline of Windows 11's menus, and WinUI's colors opaque over them. A
-// contrast theme's are the system's.
+// menuPalette is the colors of popup menus, COLORREFs: the background of
+// WinUI's menus where the material doesn't show behind them (the fallback
+// of its Acrylic, AcrylicBackgroundFillColorDefault), their outline, and
+// WinUI's colors opaque over them. A contrast theme's are the system's.
 type menuPalette struct {
 	back, plate, text, plateText, secondary, disabled, line uint32
-	// border is the menu's outline, which DWM draws around the rounded
-	// window, DWMWA_COLOR_DEFAULT for its own.
+	// border is the menu's one outline, which DWM draws around the rounded
+	// window (the window's own border is painted over in the background,
+	// paintMenuBorder), DWMWA_COLOR_DEFAULT for DWM's own. A color of its
+	// own also keeps the accent off it, which DWM would draw around a
+	// window it frames active with "Show accent color on title bars and
+	// window borders" on, as the menus' windows are (activateMenuFrame).
 	border uint32
 	// wash and rule are the highlight and the separators of a menu with
 	// the material behind it (menuGlass): WinUI's translucent fills
@@ -220,8 +225,15 @@ func (b *Backend) menuPalette() menuPalette {
 		return menuPalette{back: sysColor(colorMenu), plate: sysColor(colorHighlight), text: text,
 			plateText: sysColor(colorHighlightText), secondary: text, disabled: sysColor(colorGrayText), line: text,
 			border: dwmColorDefault}
-	case b.isDark():
-		return menuPalette{back: 0x2B2B2B, plate: 0x383838, text: 0xFFFFFF, plateText: 0xFFFFFF,
+	}
+	return fluentPalette(b.isDark())
+}
+
+// fluentPalette returns the colors of popup menus in the appearance, dark
+// or light, without a contrast theme.
+func fluentPalette(dark bool) menuPalette {
+	if dark {
+		return menuPalette{back: 0x2C2C2C, plate: 0x383838, text: 0xFFFFFF, plateText: 0xFFFFFF,
 			secondary: 0xCFCFCF, disabled: 0x787878, line: 0x3D3D3D, border: 0x3E3E3E,
 			wash: tint{0xFFFFFF, 0x0F / 255.0}, rule: tint{0xFFFFFF, 0x15 / 255.0}}
 	}
@@ -398,7 +410,8 @@ func (b *Backend) menuItemMessage(hwnd uintptr, m uint32, wp, lp uintptr) (uintp
 }
 
 // setMenuBackground paints the menu's background, around its items, in
-// the appearance's color, or none where the material shows (dressMenu).
+// the appearance's color (WinUI's solid fallback for the material), or
+// none where the material shows (dressMenu).
 func (b *Backend) setMenuBackground(menu uintptr) {
 	type menuInfo struct {
 		Size, Mask, Style, CyMax uint32
@@ -769,30 +782,38 @@ func blend(a, b uint32, t float64) uint32 {
 // It also subclasses them, to put the material of WinUI's menus, Acrylic
 // (DWMSBT_TRANSIENTWINDOW), behind those of the menus MyGo draws, once
 // they say which menu they show (dressMenu), on Windows 11 22H2 and later
-// with transparency effects on and no contrast theme (menuGlass). The
-// frame extended over the whole window, DWM shows the material where the
-// window's pixels are transparent: the menu's background, its border,
-// which the subclass paints so, and what the items leave so (paintItem).
-// Elsewhere menus keep their solid background.
+// with transparency effects on, no contrast theme, energy saver off and
+// outside remote sessions (menuGlass). The frame extended over the whole
+// window, DWM shows the material where the window's pixels are
+// transparent: the menu's background, its border, which the subclass
+// paints so, and what the items leave so (paintItem). DWM draws a system
+// backdrop only in a window it frames active, and a solid grey in one it
+// frames inactive, as a menu's window, which never activates, is: the
+// subclass frames it active (activateMenuFrame), as Firefox does its
+// popups with Acrylic. Elsewhere menus have WinUI's solid background, the
+// fallback of its Acrylic, the window's border painted in it too, for
+// DWM's outline to be the only one.
 
 const (
-	whCallWndProc = 4
-	wmCreate      = 0x0001
-	wmNCDestroy   = 0x0082
-	wmPrint       = 0x0317
-	wmPrintClient = 0x0318
-	prfNonClient  = 0x0002
-	gclStyle      = ^uintptr(25) // -26
-	gcwAtom       = ^uintptr(31) // -32
-	gwlpWndProc   = ^uintptr(3)  // -4
-	menuClassAtom = 0x8000       // #32768
-	csDropShadow  = 0x00020000
-	wsExLayoutRTL = 0x00400000
-	blackBrush    = 4
+	whCallWndProc      = 4
+	wmCreate           = 0x0001
+	wmNCDestroy        = 0x0082
+	wmPrint            = 0x0317
+	wmPrintClient      = 0x0318
+	wmWindowPosChanged = 0x0047
+	prfNonClient       = 0x0002
+	gclStyle           = ^uintptr(25) // -26
+	gcwAtom            = ^uintptr(31) // -32
+	gwlpWndProc        = ^uintptr(3)  // -4
+	menuClassAtom      = 0x8000       // #32768
+	csDropShadow       = 0x00020000
+	wsExLayoutRTL      = 0x00400000
+	blackBrush         = 4
 
 	dwmwaBorderColor = 34
 	dwmColorDefault  = 0xFFFFFFFF
 	backdropAuto     = 0 // DWMSBT_AUTO, menus' own
+	smRemoteSession  = 0x1000
 )
 
 var (
@@ -820,23 +841,63 @@ type cwpStruct struct {
 }
 
 // menuWindow is the window of a menu the subclass sees: the window
-// procedure it replaced, the menu it showed last, and whether the
-// material is behind it.
+// procedure it replaced, the menu it showed last, whether the material is
+// behind it, and the brush its border is painted with, 0 for Windows' own
+// border.
 type menuWindow struct {
 	proc, menu uintptr
 	glass      bool
+	border     uintptr
+}
+
+// glassConditions are what decide whether menus show the material.
+type glassConditions struct {
+	fluent       bool // MyGo draws the menus in Windows 11's style
+	backdrops    bool // DWM has system backdrops (Windows 11 22H2)
+	contrast     bool // a contrast theme is on
+	transparency bool // transparency effects are on
+	energySaver  bool // energy saver (battery saver) is on
+	remote       bool // the session is a remote one
+}
+
+// glass reports whether menus show the material under the conditions:
+// only where DWM surely draws it. Energy saver turns transparency effects
+// off, which their setting doesn't say, and a remote session may have
+// none; there, as wherever it isn't sure, a menu has WinUI's solid
+// background rather than DWM's fallback for the material, a flat grey.
+func (c glassConditions) glass() bool {
+	return c.fluent && c.backdrops && !c.contrast && c.transparency && !c.energySaver && !c.remote
 }
 
 // menuGlass reports whether the menus MyGo draws show the material behind
-// them, as Windows 11's own do: from 22H2, when transparency effects are
-// on (Personalization > Colors) and no contrast theme is. Windows 11's
-// first release and Windows 10 have no material for them.
+// them, as WinUI's do: from Windows 11 22H2, when transparency effects
+// are on (Personalization > Colors), and neither a contrast theme nor
+// energy saver is, outside remote sessions (glassConditions). Windows
+// 11's first release and Windows 10 have no material for them.
 func menuGlass() bool {
-	if !fluentMenus() || !systemBackdrops() || highContrastOn() {
+	c := glassConditions{fluent: fluentMenus(), backdrops: systemBackdrops()}
+	if !c.fluent || !c.backdrops {
 		return false
 	}
+	c.contrast = highContrastOn()
 	v, ok := regDWORD(hkeyCurrentUser, personalizeKey, "EnableTransparency")
-	return !ok || v != 0
+	c.transparency = !ok || v != 0
+	c.energySaver = energySaverOn()
+	r, _, _ := procGetSystemMetrics.Call(smRemoteSession)
+	c.remote = r != 0
+	return c.glass()
+}
+
+// energySaverOn reports whether energy saver (battery saver) is on.
+func energySaverOn() bool {
+	var status struct {
+		acLineStatus, batteryFlag, batteryLifePercent, systemStatusFlag uint8
+		batteryLifeTime, batteryFullLifeTime                            uint32
+	}
+	if r, _, _ := procGetSystemPowerStatus.Call(uintptr(unsafe.Pointer(&status))); r == 0 {
+		return false
+	}
+	return status.systemStatusFlag&1 != 0
 }
 
 // hookMenus hooks the main thread's messages while its menus show (on), or
@@ -896,8 +957,10 @@ func (b *Backend) subclassMenu(hwnd uintptr) {
 
 // menuProc is the window procedure of the menus' windows subclassMenu
 // subclassed. Before a window shows or paints, it dresses it for the menu
-// it shows; where the material is behind it, it paints its border
-// transparent rather than as Windows does.
+// it shows; where MyGo draws the menu, it paints its border in the
+// menu's background, transparent where the material is behind it, rather
+// than as Windows does, and keeps its frame active for DWM to draw the
+// material.
 func menuProc(hwnd, m, wp, lp uintptr) uintptr {
 	b := theBackend
 	mw := b.menuWindows[hwnd]
@@ -912,18 +975,34 @@ func menuProc(hwnd, m, wp, lp uintptr) uintptr {
 	switch uint32(m) {
 	case wmWindowPosChanging, wmEraseBkgnd, wmPaint, wmPrintClient:
 		b.dressMenu(hwnd, mw)
+	case wmWindowPosChanged:
+		// Shown, framed active again, as Firefox frames its popups once
+		// they show.
+		r := call()
+		if mw.glass && (*windowPos)(native(lp)).Flags&swpShowWindow != 0 {
+			activateMenuFrame(hwnd, true)
+		}
+		return r
+	case wmNCActivate:
+		if mw.glass {
+			// Framed active, whatever the window is told, without
+			// painting the frame: DWM draws the material of a window
+			// framed inactive as a solid fill.
+			r, _, _ := procDefWindowProcW.Call(hwnd, m, 1, ^uintptr(0))
+			return r
+		}
 	case wmNCPaint:
-		if b.dressMenu(hwnd, mw); mw.glass {
+		if b.dressMenu(hwnd, mw); mw.border != 0 {
 			dc, _, _ := procGetWindowDC.Call(hwnd)
-			clearMenuBorder(hwnd, dc)
+			paintMenuBorder(hwnd, dc, mw.border)
 			procReleaseDC.Call(hwnd, dc)
 			return 0
 		}
 	case wmPrint:
 		b.dressMenu(hwnd, mw)
 		r := call()
-		if mw.glass && lp&prfNonClient != 0 {
-			clearMenuBorder(hwnd, wp)
+		if mw.border != 0 && lp&prfNonClient != 0 {
+			paintMenuBorder(hwnd, wp, mw.border)
 		}
 		return r
 	case wmNCDestroy:
@@ -935,9 +1014,12 @@ func menuProc(hwnd, m, wp, lp uintptr) uintptr {
 
 // dressMenu puts the material behind a menu's window, or takes it away,
 // for the menu it shows: one MyGo draws, while its menus show it
-// (menuGlass), rather than Windows' window menu. It does so once the
-// window says which menu it shows, before it draws it, and again only for
-// another menu.
+// (menuGlass), rather than Windows' window menu. It picks the brush of
+// the window's border: black, transparent over the material, or the
+// menu's solid background, for DWM's outline to be the menu's only one,
+// and Windows' own for a menu MyGo doesn't draw or in a contrast theme.
+// It does so once the window says which menu it shows, before it draws
+// it, and again only for another menu.
 func (b *Backend) dressMenu(hwnd uintptr, mw *menuWindow) {
 	menu, _, _ := procSendMessageW.Call(hwnd, mnGetHMenu, 0, 0)
 	if menu == 0 || menu == mw.menu {
@@ -948,6 +1030,14 @@ func (b *Backend) dressMenu(hwnd uintptr, mw *menuWindow) {
 	if glass := b.menuGlass && draws; glass != mw.glass {
 		mw.glass = glass
 		setMenuGlass(hwnd, glass, b.isDark())
+	}
+	switch {
+	case mw.glass:
+		mw.border, _, _ = procGetStockObject.Call(blackBrush)
+	case draws && !highContrastOn():
+		mw.border = b.menuBrush(b.menuPalette().back)
+	default:
+		mw.border = 0
 	}
 	if draws {
 		b.setMenuBackground(menu)
@@ -976,7 +1066,8 @@ func (b *Backend) drawsMenu(menu uintptr) bool {
 }
 
 // setMenuGlass puts Acrylic behind a menu's window, in the appearance, the
-// frame extended over all of it, or takes it away (on false).
+// frame extended over all of it and framed active, or takes it away (on
+// false).
 func setMenuGlass(hwnd uintptr, on, dark bool) {
 	backdrop, m, d := int32(backdropAuto), margins{}, int32(0)
 	if on {
@@ -988,12 +1079,28 @@ func setMenuGlass(hwnd uintptr, on, dark bool) {
 	procDwmSetWindowAttribute.Call(hwnd, dwmwaUseImmersiveDarkMode, uintptr(unsafe.Pointer(&d)), 4)
 	procDwmExtendFrameIntoClientArea.Call(hwnd, uintptr(unsafe.Pointer(&m)))
 	procDwmSetWindowAttribute.Call(hwnd, dwmwaSystemBackdropType, uintptr(unsafe.Pointer(&backdrop)), 4)
+	activateMenuFrame(hwnd, on)
 }
 
-// clearMenuBorder paints the border of a menu's window, around its
-// client area, black in dc, a DC of the whole window: transparent over
-// the material.
-func clearMenuBorder(hwnd, dc uintptr) {
+// activateMenuFrame frames a menu's window active (on), or inactive as it
+// was, without activating it, taking the focus or painting its frame:
+// DWM draws a system backdrop only in a window it frames active, and its
+// solid fallback, a flat grey, in one it frames inactive, which a menu's
+// window, never activated, otherwise is. The subclass keeps it so
+// (menuProc).
+func activateMenuFrame(hwnd uintptr, on bool) {
+	active := uintptr(0)
+	if on {
+		active = 1
+	}
+	procSendMessageW.Call(hwnd, wmNCActivate, active, ^uintptr(0)) // -1: no painting
+}
+
+// paintMenuBorder paints the border of a menu's window, around its client
+// area, with a brush in dc, a DC of the whole window: black, transparent
+// over the material, or the menu's background, for DWM's outline around
+// the window to be the only one.
+func paintMenuBorder(hwnd, dc, brush uintptr) {
 	if dc == 0 {
 		return
 	}
@@ -1010,7 +1117,6 @@ func clearMenuBorder(hwnd, dc uintptr) {
 	saved, _, _ := procSaveDC.Call(dc)
 	procExcludeClipRect.Call(dc, uintptr(x), uintptr(y), uintptr(x+client.Right), uintptr(y+client.Bottom))
 	all := rect{0, 0, win.Right - win.Left, win.Bottom - win.Top}
-	brush, _, _ := procGetStockObject.Call(blackBrush)
 	procFillRect.Call(dc, uintptr(unsafe.Pointer(&all)), brush)
 	procRestoreDC.Call(dc, saved)
 }
